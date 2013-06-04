@@ -53,12 +53,10 @@ ifeq ($(origin RELEASE), undefined)
 endif
 
 .PHONY: all
-all:
-	$(MAKE) docs all-no-docs
+all: docs all-no-docs
 
 .PHONY: all-no-docs
-all-no-docs:
-	$(MAKE) dirs runtime compiler basis-no-check script mlbpathmap constants libraries tools
+all-no-docs: dirs runtime compiler basis-no-check script mlbpathmap constants libraries tools
 # Remove $(AOUT) so that the $(MAKE) compiler below will remake MLton.
 # We also want to re-run the just-built tools (mllex and mlyacc)
 # because they may be better than those that were used for the first
@@ -78,7 +76,7 @@ basis-no-check:
 	find "$(LIB)/sml/basis" -type l -name .gitignore | xargs rm -rf
 
 .PHONY: basis
-basis:
+basis: script
 	$(MAKE) basis-no-check
 	@echo 'Type checking basis.'
 	"$(MLTON)" -disable-ann deadCode \
@@ -100,12 +98,12 @@ clean-git:
 	find . -type d -name .git | xargs rm -rf
 
 .PHONY: compiler
-compiler:
+compiler: dirs
 	$(MAKE) -C "$(COMP)"
 	$(CP) "$(COMP)/$(AOUT)$(EXE)" "$(LIB)/"
 
 .PHONY: constants
-constants:
+constants: script
 	@echo 'Creating constants file.'
 	"$(BIN)/mlton" -target "$(TARGET)" -build-constants true >tmp.c
 	"$(BIN)/mlton" -target "$(TARGET)" -output tmp tmp.c
@@ -113,7 +111,7 @@ constants:
 	rm -f tmp tmp.exe tmp.c
 
 .PHONY: debugged
-debugged:
+debugged: all-no-docs
 	$(MAKE) -C "$(COMP)" "AOUT=$(AOUT).debug" COMPILE_ARGS="-debug true -const 'Exn.keepHistory true' -profile-val true -const 'MLton.debug true' -drop-pass 'deepFlatten'"
 	$(CP) "$(COMP)/$(AOUT).debug" "$(LIB)/"
 	sed 's/mlton-compile/mlton-compile.debug/' < "$(MLTON)" > "$(MLTON).debug"
@@ -155,7 +153,7 @@ libraries-no-check:
 	find "$(LIB)/sml" -type l -name .gitignore | xargs rm -rf
 
 .PHONY: libraries
-libraries:
+libraries: script
 	$(MAKE) libraries-no-check
 	for f in $(LIBRARIES); do				\
 		echo "Type checking $$f library.";		\
@@ -166,7 +164,7 @@ libraries:
 	done
 
 .PHONY: mlbpathmap
-mlbpathmap:
+mlbpathmap: dirs
 	touch "$(MLBPATHMAP)"
 	( echo 'MLTON_ROOT $$(LIB_MLTON_DIR)/sml';	\
 	  echo 'SML_LIB $$(LIB_MLTON_DIR)/sml'; )	\
@@ -182,7 +180,7 @@ polyml-mlton:
 	@echo 'Build of MLton succeeded.'
 
 .PHONY: profiled
-profiled:
+profiled: all-no-docs
 	for t in alloc count time; do					\
 		$(MAKE) -C "$(COMP)" "AOUT=$(AOUT).$$t"			\
 			COMPILE_ARGS="-profile $$t";			\
@@ -194,7 +192,7 @@ profiled:
 	done
 
 .PHONY: runtime
-runtime:
+runtime: dirs
 	@echo 'Compiling MLton runtime system for $(TARGET).'
 	$(MAKE) -C runtime
 	$(CP) include/*.h "$(INC)/"
@@ -214,7 +212,7 @@ runtime:
 	for x in "$(LIB)/targets/$(TARGET)"/*.a; do $(RANLIB) "$$x"; done
 
 .PHONY: script
-script:
+script: dirs compiler
 	$(CP) bin/mlton-script "$(MLTON)"
 	chmod a+x "$(MLTON)"
 	$(CP) "$(SRC)/bin/platform" "$(LIB)"
@@ -240,14 +238,14 @@ smlnj-mlton-quad:
 	$(MAKE) SMLNJ_CM_SERVERS_NUM=4 smlnj-mlton
 
 .PHONY: traced
-traced:
+traced: all-no-docs
 	$(MAKE) -C "$(COMP)" "AOUT=$(AOUT).trace" COMPILE_ARGS="-const 'Exn.keepHistory true' -profile-val true -const 'MLton.debug true' -drop-pass 'deepFlatten'"
 	$(CP) "$(COMP)/$(AOUT).trace" "$(LIB)/"
 	sed 's/mlton-compile/mlton-compile.trace/' < "$(MLTON)" > "$(MLTON).trace"
 	chmod a+x "$(MLTON).trace"
 
 .PHONY: tools
-tools:
+tools: dirs
 	$(MAKE) -C "$(LEX)"
 	$(MAKE) -C "$(NLFFIGEN)"
 	$(MAKE) -C "$(PROF)"
@@ -273,7 +271,7 @@ version:
 	mv z "$(SPEC)"
 
 .PHONY: check
-check:
+check: all-no-docs
 	./bin/regression
 
 # The TBIN and TLIB are where the files are going to be after installing.
@@ -318,7 +316,7 @@ MAN_PAGES :=  \
 	mlyacc.1
 
 .PHONY: install-no-docs
-install-no-docs:
+install-no-docs: all-no-docs
 	mkdir -p "$(TLIB)" "$(TBIN)" "$(TMAN)"
 	$(CP) "$(LIB)/." "$(TLIB)/"
 	sed "/^lib=/s;.*;lib='$(prefix)/$(ULIB)';"			\
@@ -343,7 +341,7 @@ install-no-docs:
 	fi
 
 .PHONY: install-strip
-install-strip:
+install-strip: install-no-docs
 	case "$(TARGET_OS)" in						\
 	aix|cygwin|darwin|solaris)					\
 	;;								\
@@ -357,7 +355,7 @@ install-strip:
 	esac
 
 .PHONY: install-docs
-install-docs:
+install-docs: docs
 	mkdir -p "$(TDOC)"
 	(								\
 		cd "$(SRC)/doc" &&					\
