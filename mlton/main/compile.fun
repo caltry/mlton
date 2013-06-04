@@ -648,8 +648,15 @@ fun preCodegen {input: MLBString.t}: Machine.Program.t =
             open Control
          in
             if !keepSSA
-               then saveToFile ({suffix = "ssa"}, No, ssa,
+               then
+                  let
+                     val () = saveToFile ({suffix = "ssa"}, No, ssa,
                                 Layouts Ssa.Program.layouts)
+                     val () = saveToFile ({suffix = "ssaStats"}, No, ssa,
+                                Layout Ssa.Program.layoutStats)
+                  in
+                     ()
+                  end
             else ()
          end
       val ssa2 =

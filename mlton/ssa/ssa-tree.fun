@@ -1798,6 +1798,168 @@ structure Program =
                        in () end)
                 in () end)
             val numFunctions = List.length functions
+
+            (* Find the functions which have a case statement in the first
+             * block.
+             *
+             * It may initially feel like this is a pretty weak candidate for
+             * case elimination, but many blocks do some preprocessing before
+             * casing, such as:
+             *
+             *    case f arg < 0 of ...
+             *
+             * These may lend themselves to a (sophisticated) transformation
+             * that lifts the block in question out of the function and into
+             * the caller (like a partial inlining).
+             *)
+            val caseOnEntry =
+                foldl
+                (fn (function, names) =>
+                    let
+                        val Block.T{transfer, ...} =
+                            Vector.sub (Function.blocks function, 0)
+                    in
+                        case transfer of
+                            Case _  => Function.name function :: names
+                        |   _       => names
+                    end
+                )
+                []
+                functions
+
+            (* Find the functions which immediately case on an argument.  (The
+             * strict, "easy" to implement situation) *)
+            val immediateCaseOnEntry =
+                foldl
+                (fn (function, names) =>
+                    let
+                        val Block.T{transfer, ...} =
+                            Vector.sub (Function.blocks function, 0)
+                        val {args,...} = Function.dest function
+                    in
+                        case transfer of
+                            Case {test,...}  =>
+                              (* Make sure that we're casing on an argument to
+                              the function *)
+                              if Vector.exists
+                                (args, fn (var,_) => Var.equals (var, test))
+                                 then Function.name function :: names
+                                 else names
+                        |   _       => names
+                    end
+                )
+                []
+                functions
+
+            (* Find the blocks which functions return to and have case
+             * statements.
+             *
+             * This is a very weak candidate for case elimination, since a very
+             * sophisticated transformation would be required to lift some of
+             * the processing that the block does into the callee.  Even
+             * something as simple as an arithmetic operation slows us down
+             * from simply pushing the branches to the callee.
+             *
+             *    case f arg < 0 of ...
+             *
+             * The only hope would be to produce a new function for this block,
+             * which takes in the result of 'f', does the processing and then
+             * does multi-return.  I suspect that cases where that would lead
+             * to a speedup are rare.
+             *)
+            val caseOnReturn : Label.t list =
+               foldl
+               (fn (function, names) =>
+                  let
+                     val blocks : Block.t vector = Function.blocks function
+
+                     (* (Labels of) blocks where function calls return to. *)
+                     val nonTailReturns : Label.t option vector =
+                        Vector.map (blocks,
+                           (fn Block.T{transfer, ...} => case transfer of
+                                 Transfer.Call {return,...} => (case return of
+                                       Return.NonTail {cont, ...} => SOME cont
+                                    |  _                          => NONE
+                                    )
+                              |  _  => NONE
+                           ))
+
+                     (* (Labels of) blocks which have case statements. *)
+                     val caseStatements : Label.t option vector =
+                        Vector.map (blocks,
+                           (fn Block.T{transfer, label, ...} => case transfer of
+                                 Transfer.Case _ => SOME label
+                              |  _  => NONE
+                           ))
+                     fun maybeEquals eqf (SOME left, SOME right) = eqf (left,right)
+                     |   maybeEquals _ _                         = false
+
+                     (* (Labels of) blocks which case immediately on return. *)
+                     val returnsToCase = Vector.foldr (nonTailReturns, [],
+                        (fn (blockLabel, blockLabels) =>
+                           if Vector.exists (caseStatements, fn l => maybeEquals Label.equals (l, blockLabel))
+                              then (valOf blockLabel) :: blockLabels
+                              else blockLabels
+                        ))
+                  in
+                     returnsToCase @ names
+                  end
+               )
+               []
+               functions
+
+            (* Find the blocks which immediately case on the result of a
+             * function call.  These are the cases which are "easy" to write a
+             * multi-return transformation for.
+             *)
+            val immediateCaseOnReturn : Label.t list =
+               foldl
+               (fn (function, names) =>
+                  let
+                     val blocks : Block.t vector = Function.blocks function
+
+                     (* (Labels of) blocks where function calls return to. *)
+                     val nonTailReturns : Label.t option vector =
+                        Vector.map (blocks,
+                           (fn Block.T{transfer, ...} => case transfer of
+                                 Transfer.Call {return,...} => (case return of
+                                       Return.NonTail {cont, ...} => SOME cont
+                                    |  _                          => NONE
+                                    )
+                              |  _  => NONE
+                           ))
+
+                     (* (Labels of) blocks which have case statements. *)
+                     val caseStatements : Label.t option vector =
+                        Vector.map (blocks,
+                           (fn Block.T{args, label, transfer, ...} => case transfer of
+                                 Transfer.Case {test, ...} =>
+                                    (* It only counts if we test an argument to the block. *)
+                                    if Vector.exists (args,
+                                                      fn (var, _) =>
+                                                         Var.equals (var,test)
+                                                      )
+                                       then SOME label
+                                       else NONE
+                              |  _  => NONE
+                           ))
+
+                     fun maybeEquals eqf (SOME left, SOME right) = eqf (left,right)
+                     |   maybeEquals _ _                         = false
+
+                     (* (Labels of) blocks which case immediately on return. *)
+                     val returnsToCase = Vector.foldr (nonTailReturns, [],
+                        (fn (blockLabel, blockLabels) =>
+                           if Vector.exists (caseStatements, fn l => maybeEquals Label.equals (l, blockLabel))
+                              then (valOf blockLabel) :: blockLabels
+                              else blockLabels
+                        ))
+                  in
+                     returnsToCase @ names
+                  end
+               )
+               []
+               functions
             val _ = destroy ()
             open Layout
          in
@@ -1808,6 +1970,22 @@ structure Program =
              seq [str "num blocks in program = ", Int.layout (!numBlocks)],
              seq [str "num statements in program = ", Int.layout (!numStatements)],
              seq [str "num types in program = ", Int.layout (!numTypes)],
+             seq [str "num functions that have a case in the first block = ",
+                  Int.layout (List.length caseOnEntry)],
+             seq [str "    function names: ", String.layout
+                  (List.toString (fn f => Func.toString f) caseOnEntry)],
+             seq [str "num functions that start with a case immediately = ",
+                  Int.layout (List.length immediateCaseOnEntry)],
+             seq [str "    function names: ", String.layout
+                  (List.toString (fn f => Func.toString f) immediateCaseOnEntry)],
+             seq [str "num function calls whose results are cased = ",
+                  Int.layout (List.length caseOnReturn)],
+             seq [str "    function/block names: ", String.layout
+                  (List.toString (fn f => Label.toString f) caseOnReturn)],
+             seq [str "num function calls whose results are immediately cased = ",
+                  Int.layout (List.length immediateCaseOnReturn)],
+             seq [str "    function/block names: ", String.layout
+                  (List.toString (fn f => Label.toString f) immediateCaseOnReturn)],
              Type.stats ()]
          end
 
