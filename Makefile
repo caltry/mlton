@@ -56,7 +56,7 @@ endif
 all: docs all-no-docs
 
 .PHONY: all-no-docs
-all-no-docs: dirs runtime compiler basis-no-check script mlbpathmap constants libraries tools
+all-no-docs: working-compiler libraries tools
 # Remove $(AOUT) so that the $(MAKE) compiler below will remake MLton.
 # We also want to re-run the just-built tools (mllex and mlyacc)
 # because they may be better than those that were used for the first
@@ -68,6 +68,9 @@ endif
 	$(MAKE) compiler basis
 	@echo 'Build of MLton succeeded.'
 
+.PHONY: working-compiler
+working-compiler: dirs runtime compiler basis-no-check script mlbpathmap constants libraries-no-check
+
 .PHONY: basis-no-check
 basis-no-check:
 	mkdir -p "$(LIB)/sml"
@@ -76,8 +79,7 @@ basis-no-check:
 	find "$(LIB)/sml/basis" -type l -name .gitignore | xargs rm -rf
 
 .PHONY: basis
-basis: script
-	$(MAKE) basis-no-check
+basis: runtime basis-no-check script constants mlbpathmap
 	@echo 'Type checking basis.'
 	"$(MLTON)" -disable-ann deadCode \
 		-stop tc \
@@ -103,7 +105,7 @@ compiler: dirs
 	$(CP) "$(COMP)/$(AOUT)$(EXE)" "$(LIB)/"
 
 .PHONY: constants
-constants: script
+constants: basis-no-check script mlbpathmap runtime
 	@echo 'Creating constants file.'
 	"$(BIN)/mlton" -target "$(TARGET)" -build-constants true >tmp.c
 	"$(BIN)/mlton" -target "$(TARGET)" -output tmp tmp.c
@@ -111,7 +113,7 @@ constants: script
 	rm -f tmp tmp.exe tmp.c
 
 .PHONY: debugged
-debugged: all-no-docs
+debugged: working-compiler
 	$(MAKE) -C "$(COMP)" "AOUT=$(AOUT).debug" COMPILE_ARGS="-debug true -const 'Exn.keepHistory true' -profile-val true -const 'MLton.debug true' -drop-pass 'deepFlatten'"
 	$(CP) "$(COMP)/$(AOUT).debug" "$(LIB)/"
 	sed 's/mlton-compile/mlton-compile.debug/' < "$(MLTON)" > "$(MLTON).debug"
@@ -153,8 +155,7 @@ libraries-no-check:
 	find "$(LIB)/sml" -type l -name .gitignore | xargs rm -rf
 
 .PHONY: libraries
-libraries: script
-	$(MAKE) libraries-no-check
+libraries: libraries-no-check basis-no-check script constants mlbpathmap runtime
 	for f in $(LIBRARIES); do				\
 		echo "Type checking $$f library.";		\
 		"$(MLTON)" -disable-ann deadCode		\
@@ -180,7 +181,7 @@ polyml-mlton:
 	@echo 'Build of MLton succeeded.'
 
 .PHONY: profiled
-profiled: all-no-docs
+profiled: working-compiler
 	for t in alloc count time; do					\
 		$(MAKE) -C "$(COMP)" "AOUT=$(AOUT).$$t"			\
 			COMPILE_ARGS="-profile $$t";			\
@@ -238,14 +239,14 @@ smlnj-mlton-quad:
 	$(MAKE) SMLNJ_CM_SERVERS_NUM=4 smlnj-mlton
 
 .PHONY: traced
-traced: all-no-docs
+traced: working-compiler
 	$(MAKE) -C "$(COMP)" "AOUT=$(AOUT).trace" COMPILE_ARGS="-const 'Exn.keepHistory true' -profile-val true -const 'MLton.debug true' -drop-pass 'deepFlatten'"
 	$(CP) "$(COMP)/$(AOUT).trace" "$(LIB)/"
 	sed 's/mlton-compile/mlton-compile.trace/' < "$(MLTON)" > "$(MLTON).trace"
 	chmod a+x "$(MLTON).trace"
 
 .PHONY: tools
-tools: dirs
+tools: dirs runtime compiler script mlbpathmap basis-no-check constants libraries
 	$(MAKE) -C "$(LEX)"
 	$(MAKE) -C "$(NLFFIGEN)"
 	$(MAKE) -C "$(PROF)"
