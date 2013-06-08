@@ -1851,6 +1851,20 @@ structure Program =
                 []
                 functions
 
+            val callsToFunctionsThatImmediatelyCaseOnEntry =
+               List.foldr (functions, [],
+                  fn (function, callSites) =>
+                     Vector.foldr (Function.blocks function, callSites,
+                        fn (block as Block.T{transfer = Transfer.Call {func, ...}, ...}
+                           , callSites)
+                              => if List.exists (immediateCaseOnEntry
+                                                , fn f => Func.equals (func, f))
+                                    then block :: callSites
+                                    else callSites
+                        |  (_, callSites)     => callSites
+                     )
+                  )
+
             (* Find the blocks which functions return to and have case
              * statements.
              *
@@ -1978,6 +1992,11 @@ structure Program =
                   Int.layout (List.length immediateCaseOnEntry)],
              seq [str "    function names: ", String.layout
                   (List.toString (fn f => Func.toString f) immediateCaseOnEntry)],
+             seq [str "num calls to functions that start with a case immediately = ",
+                  Int.layout (List.length callsToFunctionsThatImmediatelyCaseOnEntry)],
+             seq [str "    block names: ", String.layout
+                  (List.toString (fn f => Label.toString (Block.label f))
+                  callsToFunctionsThatImmediatelyCaseOnEntry)],
              seq [str "num function calls whose results are cased = ",
                   Int.layout (List.length caseOnReturn)],
              seq [str "    function/block names: ", String.layout
