@@ -1851,18 +1851,28 @@ structure Program =
                 []
                 functions
 
-            val callsToFunctionsThatImmediatelyCaseOnEntry =
+            (* Find all function calls. *)
+            val callsToFunctions =
                List.foldr (functions, [],
                   fn (function, callSites) =>
                      Vector.foldr (Function.blocks function, callSites,
-                        fn (block as Block.T{transfer = Transfer.Call {func, ...}, ...}
+                        fn (block as Block.T{transfer = Transfer.Call _, ...}
                            , callSites)
-                              => if List.exists (immediateCaseOnEntry
-                                                , fn f => Func.equals (func, f))
-                                    then block :: callSites
-                                    else callSites
+                              => block :: callSites
                         |  (_, callSites)     => callSites
                      )
+                  )
+
+            (* Find all of the call sites for functions that immediately case
+            on entry. *)
+            val callsToFunctionsThatImmediatelyCaseOnEntry =
+               List.foldr (callsToFunctions, [],
+                  fn (block as Block.T{transfer = Transfer.Call {func, ...}, ...}
+                     , callSites)
+                        => if List.exists (immediateCaseOnEntry
+                                          , fn f => Func.equals (func, f))
+                              then block :: callSites
+                              else callSites
                   )
 
             (* Find the blocks which functions return to and have case
@@ -1974,6 +1984,7 @@ structure Program =
                )
                []
                functions
+
             val _ = destroy ()
             open Layout
          in
@@ -2005,6 +2016,14 @@ structure Program =
                   Int.layout (List.length immediateCaseOnReturn)],
              seq [str "    function/block names: ", String.layout
                   (List.toString (fn f => Label.toString f) immediateCaseOnReturn)],
+             (* Latex tabular information for total functions, ME functions, ME function calls, total function calls *)
+             seq [str "tabular multi-entry & ",
+               Int.layout numFunctions, str " & ",
+               Int.layout (List.length immediateCaseOnEntry), str " & ",
+               Int.layout (List.length callsToFunctionsThatImmediatelyCaseOnEntry), str " & ",
+               Int.layout (List.length callsToFunctions)],
+             seq [str "tabular multi-exit & ",
+               Int.layout ()
              Type.stats ()]
          end
 
