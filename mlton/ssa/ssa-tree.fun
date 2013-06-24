@@ -2037,14 +2037,18 @@ structure Program =
              seq [str "tabular multi-entry & ",
                Int.layout (List.length immediateCaseOnEntry), str " & ",
                Int.layout numFunctions, str " & ",
+               Int.layout (100 * (List.length immediateCaseOnEntry) div numFunctions), str " & ",
                Int.layout (List.length callsToFunctionsThatImmediatelyCaseOnEntry), str " & ",
-               Int.layout (List.length callsToFunctions)],
+               Int.layout (List.length callsToFunctions), str " & ",
+               Int.layout (100 * (List.length callsToFunctionsThatImmediatelyCaseOnEntry) div (List.length callsToFunctions))],
              (* LaTeX tabular information for total MR functions, total functions, MR function calls, total function calls *)
              seq [str "tabular multi-exit & ",
                Int.layout (List.length functionsThatReturnToCaseSatatements), str " & ",
                Int.layout numFunctions, str " & ",
+               Int.layout (100 * (List.length functionsThatReturnToCaseSatatements) div numFunctions), str " & ",
                Int.layout (List.length immediateCaseOnReturn), str " & ",
-               Int.layout (List.length callsToFunctions)],
+               Int.layout (List.length callsToFunctions), str " & ",
+               Int.layout (100 * (List.length immediateCaseOnReturn) div (List.length callsToFunctions))],
              Type.stats ()]
          end
 
