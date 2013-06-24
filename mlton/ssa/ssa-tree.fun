@@ -2033,16 +2033,16 @@ structure Program =
                   Int.layout (List.length immediateCaseOnReturn)],
              seq [str "    function/block names: ", String.layout
                   (List.toString (fn Block.T{label,...} => Label.toString label) immediateCaseOnReturn)],
-             (* LaTeX tabular information for total functions, ME functions, ME function calls, total function calls *)
+             (* LaTeX tabular information for ME functions, total functions, ME function calls, total function calls *)
              seq [str "tabular multi-entry & ",
-               Int.layout numFunctions, str " & ",
                Int.layout (List.length immediateCaseOnEntry), str " & ",
+               Int.layout numFunctions, str " & ",
                Int.layout (List.length callsToFunctionsThatImmediatelyCaseOnEntry), str " & ",
                Int.layout (List.length callsToFunctions)],
-             (* LaTeX tabular information for total functions, total MR functions, MR function calls, total function calls *)
+             (* LaTeX tabular information for total MR functions, total functions, MR function calls, total function calls *)
              seq [str "tabular multi-exit & ",
-               Int.layout numFunctions, str " & ",
                Int.layout (List.length functionsThatReturnToCaseSatatements), str " & ",
+               Int.layout numFunctions, str " & ",
                Int.layout (List.length immediateCaseOnReturn), str " & ",
                Int.layout (List.length callsToFunctions)],
              Type.stats ()]
