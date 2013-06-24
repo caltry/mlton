@@ -82,8 +82,7 @@ structure Type =
          fun lookup (hash, tr) =
             HashSet.lookupOrInsert (table, hash,
                                     fn t => same (tr, tree t),
-                                    fn () => T {hash = hash,
-                                                plist = PropertyList.new (),
+                                    fn () => T {hash = hash, plist = PropertyList.new (),
                                                 tree = tr})
 
          fun stats () =
@@ -1873,6 +1872,7 @@ structure Program =
                                           , fn f => Func.equals (func, f))
                               then block :: callSites
                               else callSites
+                  |  (_, callSites) => callSites
                   )
 
             (* Find the blocks which functions return to and have case
@@ -1936,47 +1936,47 @@ structure Program =
              * function call.  These are the cases which are "easy" to write a
              * multi-return transformation for.
              *)
-            val immediateCaseOnReturn : Label.t list =
+            val immediateCaseOnReturn : Block.t list =
                foldl
                (fn (function, names) =>
                   let
                      val blocks : Block.t vector = Function.blocks function
 
-                     (* (Labels of) blocks where function calls return to. *)
-                     val nonTailReturns : Label.t option vector =
+                     (* Blocks where function calls return to. *)
+                     val nonTailReturns : Block.t option vector =
                         Vector.map (blocks,
-                           (fn Block.T{transfer, ...} => case transfer of
+                           (fn block as Block.T{transfer, ...} => case transfer of
                                  Transfer.Call {return,...} => (case return of
-                                       Return.NonTail {cont, ...} => SOME cont
+                                       Return.NonTail {cont, ...} => SOME block
                                     |  _                          => NONE
                                     )
                               |  _  => NONE
                            ))
 
-                     (* (Labels of) blocks which have case statements. *)
-                     val caseStatements : Label.t option vector =
+                     (* Blocks which have case statements. *)
+                     val caseStatements : Block.t option vector =
                         Vector.map (blocks,
-                           (fn Block.T{args, label, transfer, ...} => case transfer of
+                           (fn block as Block.T{args, label, transfer, ...} => case transfer of
                                  Transfer.Case {test, ...} =>
                                     (* It only counts if we test an argument to the block. *)
                                     if Vector.exists (args,
                                                       fn (var, _) =>
                                                          Var.equals (var,test)
                                                       )
-                                       then SOME label
+                                       then SOME block
                                        else NONE
                               |  _  => NONE
                            ))
 
-                     fun maybeEquals eqf (SOME left, SOME right) = eqf (left,right)
-                     |   maybeEquals _ _                         = false
-
-                     (* (Labels of) blocks which case immediately on return. *)
+                     (* Blocks which case immediately on return. *)
                      val returnsToCase = Vector.foldr (nonTailReturns, [],
-                        (fn (blockLabel, blockLabels) =>
-                           if Vector.exists (caseStatements, fn l => maybeEquals Label.equals (l, blockLabel))
-                              then (valOf blockLabel) :: blockLabels
-                              else blockLabels
+                        (fn (SOME (block as Block.T{label, ...}), blocks) =>
+                           if Vector.exists (caseStatements,
+                              fn SOME (Block.T{label=l,...}) => Label.equals (l, label)
+                              |  NONE => false)
+                                 then block :: blocks
+                                 else blocks
+                        |  (_,blocks) => blocks
                         ))
                   in
                      returnsToCase @ names
@@ -1984,6 +1984,23 @@ structure Program =
                )
                []
                functions
+
+            (* Functions whose results are immediately scruitinized in a case
+             * expression at the call site. *)
+            local
+               val funs =
+                  List.foldr(immediateCaseOnReturn, [],
+                     fn (block as Block.T{transfer = Transfer.Call{func,...}, ...}
+                        , functions) => func::functions
+                     |  (_, functions) => functions
+                     )
+            in
+               val functionsThatReturnToCaseSatatements : Func.t list =
+                  HashSet.toList
+                     (HashSet.fromList
+                        (funs
+                        ,{hash = Func.hash, equals = Func.equals}))
+            end
 
             val _ = destroy ()
             open Layout
@@ -2015,15 +2032,19 @@ structure Program =
              seq [str "num function calls whose results are immediately cased = ",
                   Int.layout (List.length immediateCaseOnReturn)],
              seq [str "    function/block names: ", String.layout
-                  (List.toString (fn f => Label.toString f) immediateCaseOnReturn)],
-             (* Latex tabular information for total functions, ME functions, ME function calls, total function calls *)
+                  (List.toString (fn Block.T{label,...} => Label.toString label) immediateCaseOnReturn)],
+             (* LaTeX tabular information for total functions, ME functions, ME function calls, total function calls *)
              seq [str "tabular multi-entry & ",
                Int.layout numFunctions, str " & ",
                Int.layout (List.length immediateCaseOnEntry), str " & ",
                Int.layout (List.length callsToFunctionsThatImmediatelyCaseOnEntry), str " & ",
                Int.layout (List.length callsToFunctions)],
+             (* LaTeX tabular information for total functions, total MR functions, MR function calls, total function calls *)
              seq [str "tabular multi-exit & ",
-               Int.layout ()
+               Int.layout numFunctions, str " & ",
+               Int.layout (List.length functionsThatReturnToCaseSatatements), str " & ",
+               Int.layout (List.length immediateCaseOnReturn), str " & ",
+               Int.layout (List.length callsToFunctions)],
              Type.stats ()]
          end
 
