@@ -1943,11 +1943,11 @@ structure Program =
                      val blocks : Block.t vector = Function.blocks function
 
                      (* Blocks where function calls return to. *)
-                     val nonTailReturns : Block.t option vector =
+                     val nonTailReturns : Label.t option vector =
                         Vector.map (blocks,
                            (fn block as Block.T{transfer, ...} => case transfer of
                                  Transfer.Call {return,...} => (case return of
-                                       Return.NonTail {cont, ...} => SOME block
+                                       Return.NonTail {cont, ...} => SOME cont
                                     |  _                          => NONE
                                     )
                               |  _  => NONE
@@ -1969,17 +1969,18 @@ structure Program =
                            ))
 
                      (* Blocks which case immediately on return. *)
-                     val returnsToCase = Vector.foldr (nonTailReturns, [],
-                        (fn (SOME (block as Block.T{label, ...}), blocks) =>
-                           if Vector.exists (caseStatements,
-                              fn SOME (Block.T{label=l,...}) => Label.equals (l, label)
-                              |  NONE => false)
-                                 then block :: blocks
-                                 else blocks
-                        |  (_,blocks) => blocks
+                     val returnsToCase = Vector.foldr (caseStatements, names,
+                        (fn (SOME (block as Block.T{label=l1,...}), blocks) =>
+                           if Vector.exists (nonTailReturns,
+                                 (fn SOME l2 => Label.equals (l1, l2)
+                                 |  NONE     => false
+                                 ))
+                              then block :: blocks
+                              else blocks
+                        |  (NONE, blocks)  => blocks
                         ))
                   in
-                     returnsToCase @ names
+                     returnsToCase
                   end
                )
                []
