@@ -1989,12 +1989,25 @@ structure Program =
             (* Functions whose results are immediately scruitinized in a case
              * expression at the call site. *)
             local
+               (* A list of all candidate functions, before deduplication *)
                val funs =
-                  List.foldr(immediateCaseOnReturn, [],
-                     fn (block as Block.T{transfer = Transfer.Call{func,...}, ...}
-                        , functions) => func::functions
-                     |  (_, functions) => functions
+                  foldl
+                     (fn (function, names) =>
+                        (* Blocks where function calls return to. *)
+                        Vector.foldr (Function.blocks function, names,
+                           (fn ((block as (Block.T{transfer, ...})), funs) =>
+                              (case transfer of
+                                 Transfer.Call {func, return,...} =>
+                                    (case return of
+                                       Return.NonTail {...} => func::funs
+                                    |  _                          => funs
+                                    )
+                              |  _                                => funs
+                              )
+                           ))
                      )
+                     []
+                     functions
             in
                val functionsThatReturnToCaseSatatements : Func.t list =
                   HashSet.toList
