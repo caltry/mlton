@@ -1,4 +1,5 @@
-(* Copyright (C) 1999-2007 Henry Cejtin, Matthew Fluet, Suresh
+(* Copyright (C) 2013 Matthew Fluet, David Larsen.
+ * Copyright (C) 1999-2007 Henry Cejtin, Matthew Fluet, Suresh
  *    Jagannathan, and Stephen Weeks.
  * Copyright (C) 1997-2000 NEC Research Institute.
  *
@@ -10,10 +11,12 @@ Group
 
 signature HANDLER
 signature RETURN
+signature ME_SSA
 signature SSA
 signature SSA2
 
 functor FlatLattice
+functor MeSsa
 functor Ssa
 functor Ssa2
 functor SsaToSsa2
@@ -26,26 +29,40 @@ is
 
 equatable.sig
 equatable.sml
+handler.sig
+return.sig
 ssa-tree.old.sig
+ssa-tree.sig
 ssa-tree2.sig
 ssa-tree.old.fun
+ssa-tree.fun
 ssa-tree2.fun
+direct-exp.old.sig
 direct-exp.sig
+direct-exp.old.fun
 direct-exp.fun
+analyze.old.sig
 analyze.sig
 analyze2.sig
+analyze.old.fun
 analyze.fun
 analyze2.fun
+type-check.old.sig
 type-check.sig
 type-check2.sig
+type-check.old.fun
 type-check.fun
 type-check2.fun
+prepasses.old.sig
 prepasses.sig
 prepasses2.sig
+prepasses.old.fun
 prepasses.fun
 prepasses2.fun
+shrink.old.sig
 shrink.sig
 shrink2.sig
+shrink.old.fun
 shrink.fun
 shrink2.fun
 flat-lattice.sig
@@ -56,9 +73,12 @@ two-point-lattice.sig
 two-point-lattice.fun
 three-point-lattice.sig
 three-point-lattice.fun
+restore.old.sig
 restore.sig
+restore.old.fun
 restore.fun
 
+ssa-transform.old.sig
 ssa-transform.sig
 ssa2-transform.sig
 common-arg.fun
@@ -80,7 +100,9 @@ known-case.fun
 local-flatten.fun
 local-ref.fun
 loop-invariant.fun
+poly-equal.old.fun
 poly-equal.fun
+poly-hash.old.fun
 poly-hash.fun
 profile.sig
 profile.fun
@@ -94,12 +116,16 @@ remove-unused2.fun
 simplify-types.fun
 useless.fun
 zone.fun
+simplify.old.sig
 simplify.sig
 simplify2.sig
+simplify.old.fun
 simplify.fun
 simplify2.fun
+ssa.old.sig
 ssa.sig
 ssa2.sig
+ssa.old.fun
 ssa.fun
 ssa2.fun
 ssa-to-ssa2.sig

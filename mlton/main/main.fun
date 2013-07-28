@@ -254,6 +254,9 @@ fun makeOptions {usage} =
        (Expert, "cc-opt-quote", " <opt>", "pass (quoted) option to C compiler",
         SpaceString
         (fn s => List.push (ccOpts, {opt = s, pred = OptPred.Yes}))),
+       (Expert, "check-multi-entry", "{false|true}",
+        "exercise multi-entry compilation pipeline",
+        boolRef checkMultiEntry),
        (Expert, "chunkify", " {coalesce<n>|func|one}", "set chunkify method",
         SpaceString (fn s =>
                      explicitChunk

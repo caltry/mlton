@@ -1,4 +1,4 @@
-(* Copyright (C) 2011 Matthew Fluet.
+(* Copyright (C) 2011,2013 Matthew Fluet.
  * Copyright (C) 1999-2008 Henry Cejtin, Matthew Fluet, Suresh
  *    Jagannathan, and Stephen Weeks.
  * Copyright (C) 1997-2000 NEC Research Institute.
@@ -71,6 +71,7 @@ structure CoreML = CoreML (open Atoms
 structure Xml = Xml (open Atoms)
 structure Sxml = Sxml (open Xml)
 structure Ssa = Ssa (open Atoms)
+structure MeSsa = MeSsa (open Atoms)
 structure Ssa2 = Ssa2 (open Atoms)
 structure Machine = Machine (open Atoms
                              structure Label = Ssa.Label)
@@ -105,6 +106,8 @@ structure Monomorphise = Monomorphise (structure Xml = Xml
                                        structure Sxml = Sxml)
 structure ClosureConvert = ClosureConvert (structure Ssa = Ssa
                                            structure Sxml = Sxml)
+structure MeClosureConvert = MeClosureConvert (structure Ssa = MeSsa
+                                               structure Sxml = Sxml)
 structure SsaToSsa2 = SsaToSsa2 (structure Ssa = Ssa
                                  structure Ssa2 = Ssa2)
 structure Backend = Backend (structure Ssa = Ssa2
@@ -625,6 +628,40 @@ fun preCodegen {input: MLBString.t}: Machine.Program.t =
                                 Layouts Sxml.Program.layouts)
             else ()
          end
+      val () =
+         if !Control.checkMultiEntry
+            then let
+                    val messa =
+                       Control.passTypeCheck
+                       {display = Control.Layouts MeSsa.Program.layouts,
+                        name = "meClosureConvert",
+                        stats = MeSsa.Program.layoutStats,
+                        style = Control.No,
+                        suffix = "messa",
+                        thunk = fn () => MeClosureConvert.closureConvert sxml,
+                        typeCheck = MeSsa.typeCheck}
+                    val messa =
+                       Control.passTypeCheck
+                       {display = Control.Layouts MeSsa.Program.layouts,
+                        name = "meSsaSimplify",
+                        stats = MeSsa.Program.layoutStats,
+                        style = Control.No,
+                        suffix = "messa",
+                        thunk = fn () => MeSsa.simplify messa,
+                        typeCheck = MeSsa.typeCheck}
+                    val _ =
+                       let
+                          open Control
+                       in
+                          if !keepSSA
+                             then saveToFile ({suffix = "messa"}, No, messa,
+                                              Layouts MeSsa.Program.layouts)
+                          else ()
+                       end
+                 in
+                    ()
+                 end
+         else ()
       val ssa =
          Control.passTypeCheck
          {display = Control.Layouts Ssa.Program.layouts,

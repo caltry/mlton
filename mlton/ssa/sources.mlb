@@ -1,4 +1,5 @@
-(* Copyright (C) 1999-2007 Henry Cejtin, Matthew Fluet, Suresh
+(* Copyright (C) 2013 Matthew Fluet, David Larsen.
+ * Copyright (C) 1999-2007 Henry Cejtin, Matthew Fluet, Suresh
  *    Jagannathan, and Stephen Weeks.
  * Copyright (C) 1997-2000 NEC Research Institute.
  *
@@ -13,6 +14,8 @@ local
 
    equatable.sig
    equatable.sml
+   handler.sig
+   return.sig
    ssa-tree.old.sig
    ssa-tree.sig
    ssa-tree2.old.sig
@@ -22,8 +25,8 @@ local
    ssa-tree2.old.fun
    ssa-tree2.fun
    direct-exp.old.sig
-   direct-exp.old.fun
    direct-exp.sig
+   direct-exp.old.fun
    direct-exp.fun
    analyze.old.sig
    analyze.sig
@@ -106,24 +109,24 @@ local
    simplify.old.fun
    simplify.fun
    simplify2.fun
-   ssa.sig
    ssa.old.sig
+   ssa.sig
    ssa2.sig
-   ssa.fun
    ssa.old.fun
+   ssa.fun
    ssa2.fun
    ssa-to-ssa2.sig
    ssa-to-ssa2.fun
 in
    signature HANDLER
    signature RETURN
-   signature ME_SSA
    signature SSA
+   signature ME_SSA
    signature SSA2
 
    functor FlatLattice
-   functor MeSsa
    functor Ssa
+   functor MeSsa
    functor Ssa2
    functor SsaToSsa2
 end

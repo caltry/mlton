@@ -1,4 +1,4 @@
-(* Copyright (C) 2009-2012 Matthew Fluet.
+(* Copyright (C) 2009-2013 Matthew Fluet.
  * Copyright (C) 1999-2008 Henry Cejtin, Matthew Fluet, Suresh
  *    Jagannathan, and Stephen Weeks.
  * Copyright (C) 1997-2000 NEC Research Institute.
@@ -32,6 +32,10 @@ val atMLtons = control {name = "atMLtons",
                         default = Vector.new0 (),
                         toString = fn v => Layout.toString (Vector.layout
                                                             String.layout v)}
+
+val checkMultiEntry = control {name = "check multi entry",
+                               default = false,
+                               toString = Bool.toString}
 
 structure Chunk =
    struct

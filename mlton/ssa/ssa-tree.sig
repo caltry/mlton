@@ -1,4 +1,4 @@
-(* Copyright (C) 2013 David Larsen.
+(* Copyright (C) 2013 Matthew Fluet, David Larsen.
  * Copyright (C) 2009 Matthew Fluet.
  * Copyright (C) 1999-2008 Henry Cejtin, Matthew Fluet, Suresh
  *    Jagannathan, and Stephen Weeks.
@@ -8,51 +8,14 @@
  * See the file MLton-LICENSE for details.
  *)
 
-signature SSA_TREE_STRUCTS = 
+signature ME_SSA_TREE_STRUCTS =
    sig
       include ATOMS
    end
 
-signature HANDLER =
-   sig
-      structure Label: LABEL
-
-      datatype t =
-         Caller
-       | Dead
-       | Handle of Label.t
-
-      val equals: t * t -> bool
-      val foldLabel: t * 'a * (Label.t * 'a -> 'a) -> 'a
-      val foreachLabel: t * (Label.t -> unit) -> unit
-      val layout: t -> Layout.t
-      val map: t * (Label.t -> Label.t) -> t
-   end
-
-signature RETURN =
-   sig
-      structure Label: LABEL
-
-      structure Handler: HANDLER
-      sharing Label = Handler.Label
-
-      datatype t =
-         Dead
-       | NonTail of {cont: Label.t,
-                     handler: Handler.t}
-       | Tail
-
-      val compose: t * t -> t
-      val foldLabel: t * 'a * (Label.t * 'a -> 'a) -> 'a
-      val foreachHandler: t * (Label.t -> unit) -> unit
-      val foreachLabel: t * (Label.t -> unit) -> unit
-      val layout: t -> Layout.t
-      val map: t * (Label.t -> Label.t) -> t
-   end
-
 signature ME_SSA_TREE =
    sig
-      include SSA_TREE_STRUCTS
+      include ME_SSA_TREE_STRUCTS
 
       structure Type:
          sig

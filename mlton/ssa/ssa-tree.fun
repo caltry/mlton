@@ -1,4 +1,4 @@
-(* Copyright (C) 2013 David Larsen.
+(* Copyright (C) 2013 Matthew Fluet, David Larsen.
  * Copyright (C) 2009 Matthew Fluet.
  * Copyright (C) 1999-2008 Henry Cejtin, Matthew Fluet, Suresh
  *    Jagannathan, and Stephen Weeks.
@@ -8,7 +8,7 @@
  * See the file MLton-LICENSE for details.
  *)
 
-functor MeSsaTree (S: SSA_TREE_STRUCTS): ME_SSA_TREE =
+functor MeSsaTree (S: ME_SSA_TREE_STRUCTS): ME_SSA_TREE =
 struct
 
 open S
@@ -983,8 +983,14 @@ structure FunctionEntry =
               start: Label.t
               }
 
-      fun function (T{function, ...}) = function
-      fun name (T{name, ...}) = name
+      local
+         fun make f (T r) = f r
+      in
+         (* val args = make #args *)
+         val function = make #function
+         val name = make #name
+         val start = make #start
+      end
 
       fun layoutHeaders (T{args, name, start, ...}) =
          let
@@ -1147,6 +1153,12 @@ structure Function =
                val dominatorForest = Promise.lazy (fn () =>
                   let
                      val fakeRoot = newNode ()
+                     val fakeBlock =
+                        Block.T {args = Vector.new0 (),
+                                 label = Label.newNoname (),
+                                 statements = Vector.new0 (),
+                                 transfer = Transfer.Bug}
+                     val _ = setNodeInfo (fakeRoot, {block = fakeBlock})
                      val () = Vector.foreach (entries,
                          fn FunctionEntry.T{start, ...} =>
                              let
@@ -1159,7 +1171,7 @@ structure Function =
                          )
                      val Tree.T (_, trees) =
                         Graph.dominatorTree (g, {root = fakeRoot,
-                                             nodeValue = #block o nodeInfo})
+                                                 nodeValue = #block o nodeInfo})
                   in
                      trees
                   end)
@@ -1304,23 +1316,12 @@ structure Function =
                    in
                       ()
                    end)
-               val roots =
-                  Vector.foldr (entries, [],
-                     fn (FunctionEntry.T{start, ...}, roots) =>
-                        labelNode start :: roots
-                  )
+               val roots = Vector.toListMap (entries, labelNode o FunctionEntry.start)
                val graphLayout =
                   Graph.layoutDot
                   (graph, fn {nodeName} => 
                    {title = concat [Func.toString name, " control-flow graph"],
-                    options =
-                     [GraphOption.Rank
-                        (Min,
-                        Vector.foldr (entries, [],
-                           fn (FunctionEntry.T{start, ...}, roots) =>
-                              {nodeName = nodeName (labelNode start)} :: roots
-                        ))
-                     ],
+                    options = [GraphOption.Rank (Min, List.map (roots, fn root => {nodeName = nodeName root}))],
                     edgeOptions = edgeOptions,
                     nodeOptions =
                     fn n => let
