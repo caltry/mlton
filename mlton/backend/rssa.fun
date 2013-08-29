@@ -1,4 +1,4 @@
-(* Copyright (C) 2013 David Larsen.
+(* Copyright (C) 2013 Matthew Fluet, David Larsen.
  * Copyright (C) 2009 Matthew Fluet.
  * Copyright (C) 1999-2008 Henry Cejtin, Matthew Fluet, Suresh
  *    Jagannathan, and Stephen Weeks.
@@ -412,6 +412,7 @@ structure Transfer =
              | Raise xs => seq [str "raise ", Vector.layout Operand.layout xs]
              | Return xs => seq [str "return ", Vector.layout Operand.layout xs]
              | Switch s => Switch.layout s
+             | Bug => str "Bug"
          end
 
       fun bug () =
@@ -457,6 +458,7 @@ structure Transfer =
              | Return zs => useOperands (zs, a)
              | Switch s => Switch.foldLabelUse (s, a, {label = label,
                                                        use = useOperand})
+             | Bug => a
          end
 
       fun foreachDefLabelUse (t, {def, label, use}) =
@@ -531,6 +533,7 @@ structure Transfer =
              | Raise zs => Raise (opers zs)
              | Return zs => Return (opers zs)
              | Switch s => Switch (Switch.replaceVar (s, f))
+             | Bug => Bug
          end
    end
 
@@ -1422,6 +1425,7 @@ structure Program =
                             | Raise _ => tail "raise"
                             | Return _ => tail "return"
                             | Switch s => Switch.foreachLabel (s, goto)
+                            | Bug => ()
                         end
                   val () = Vector.foreach
                      (entries,
@@ -1877,6 +1881,7 @@ structure Program =
                          | Switch s =>
                               Switch.isOk (s, {checkUse = checkOperand,
                                                labelIsOk = labelIsNullaryJump})
+                         | Bug => true
                      end
                   val transferOk =
                      Trace.trace ("Rssa.transferOk",
