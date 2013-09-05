@@ -1,4 +1,5 @@
-(* Copyright (C) 1999-2006 Henry Cejtin, Matthew Fluet, Suresh
+(* Copyright (C) 2013 Matthew Fluet.
+ * Copyright (C) 1999-2006 Henry Cejtin, Matthew Fluet, Suresh
  *    Jagannathan, and Stephen Weeks.
  * Copyright (C) 1997-2000 NEC Research Institute.
  *
@@ -138,14 +139,14 @@ fun transform (Program.T {datatypes, globals, functions, main}) =
                | Runtime {return, ...} => visitLabelArgs return)
           end)
       val () = Graph.removeDuplicateEdges G
-      val {idom} = Graph.dominators (G, {root = root})
+      val {idom} = Graph.dominators (G, {roots = Vector.new1 root})
       fun getVar (v: Var.t): Var.t =
          case idom (varNode v) of
             Graph.Idom parent => if Node.equals (parent, root)
                                     then v
                                  else NodeInfo.var (nodeInfo parent)
           | Graph.Unreachable => v
-          | Graph.Root => v
+          | Graph.Root _ => v
       fun keepVar v = Var.equals (v, getVar v)
       (* Diagnostics *)
       val () = 

@@ -381,7 +381,6 @@ structure Transfer =
        | Raise of Operand.t vector
        | Return of Operand.t vector
        | Switch of Switch.t
-       | Bug
 
       fun layout t =
          let
@@ -412,7 +411,6 @@ structure Transfer =
              | Raise xs => seq [str "raise ", Vector.layout Operand.layout xs]
              | Return xs => seq [str "return ", Vector.layout Operand.layout xs]
              | Switch s => Switch.layout s
-             | Bug => str "Bug"
          end
 
       fun bug () =
@@ -458,7 +456,6 @@ structure Transfer =
              | Return zs => useOperands (zs, a)
              | Switch s => Switch.foldLabelUse (s, a, {label = label,
                                                        use = useOperand})
-             | Bug => a
          end
 
       fun foreachDefLabelUse (t, {def, label, use}) =
@@ -533,7 +530,6 @@ structure Transfer =
              | Raise zs => Raise (opers zs)
              | Return zs => Return (opers zs)
              | Switch s => Switch (Switch.replaceVar (s, f))
-             | Bug => Bug
          end
    end
 
@@ -795,36 +791,9 @@ structure Function =
                 in
                    ()
                 end)
-
-            (* When we build the dominator forest, we create a fake root
-             * element that dominates all of the entry points; this lets us
-             * use the regular dominator tree algorithm.  We then throw away
-             * the root element, after Graph.dominatorTree has returned,
-             * since it was only there to make the forest look like a tree.
-             *)
-            val fakeRoot = newNode ()
-            val fakeBlock =
-               Block.T {args = Vector.new0 (),
-                        kind = Kind.Jump,
-                        label = Label.newNoname (),
-                        statements = Vector.new0 (),
-                        transfer = Transfer.Bug}
-            val _ = setNodeInfo (fakeRoot, {block = fakeBlock})
-            val () = Vector.foreach (entries,
-                fn FunctionEntry.T{start, ...} =>
-                    let
-                        val entry = labelNode start
-                        val _ = Graph.addEdge (g, {from = fakeRoot,
-                                                   to = entry})
-                    in
-                        ()
-                    end
-                )
-            val Tree.T (_, trees) =
-               Graph.dominatorTree (g, {root = fakeRoot,
-                                        nodeValue = #block o nodeInfo})
          in
-            trees
+            Graph.dominatorForest (g, {roots = Vector.map (entries, labelNode o FunctionEntry.start),
+                                       nodeValue = #block o nodeInfo})
          end
 
       fun dropProfile (f: t): t =
@@ -1425,7 +1394,6 @@ structure Program =
                             | Raise _ => tail "raise"
                             | Return _ => tail "return"
                             | Switch s => Switch.foreachLabel (s, goto)
-                            | Bug => ()
                         end
                   val () = Vector.foreach
                      (entries,
@@ -1881,7 +1849,6 @@ structure Program =
                          | Switch s =>
                               Switch.isOk (s, {checkUse = checkOperand,
                                                labelIsOk = labelIsNullaryJump})
-                         | Bug => true
                      end
                   val transferOk =
                      Trace.trace ("Rssa.transferOk",

@@ -924,8 +924,6 @@ let
                                     size = size,
                                     test = translateOperand test}))
                         end
-                   | R.Transfer.Bug =>
-                     Error.bug "Backend.genTransfer: encountered a 'Bug' transfer."
                end
             val genTransfer =
                Trace.trace ("Backend.genTransfer",

@@ -1,4 +1,5 @@
-(* Copyright (C) 1999-2006, 2008 Henry Cejtin, Matthew Fluet, Suresh
+(* Copyright (C) 2013 Matthew Fluet.
+ * Copyright (C) 1999-2006, 2008 Henry Cejtin, Matthew Fluet, Suresh
  *    Jagannathan, and Stephen Weeks.
  *
  * MLton is released under a BSD-style license.
@@ -266,9 +267,9 @@ fun dfsNodes (_: t,
 
 fun dfs (g, z) = dfsNodes (g, nodes g, z)
 
-fun dfsTrees (g, roots: Node.t list, nodeValue: Node.t -> 'a): 'a Tree.t list =
-   dfsNodes
-   (g, roots,
+fun dfsForest (g, {roots: Node.t vector, nodeValue: Node.t -> 'a}) : 'a Tree.t vector =
+   (Vector.fromList o dfsNodes)
+   (g, Vector.toList roots,
     ([], fn (_, trees) =>
      let
         fun startNode (n, ()) =
@@ -285,9 +286,13 @@ fun dfsTrees (g, roots: Node.t list, nodeValue: Node.t -> 'a): 'a Tree.t list =
      end))
 
 fun dfsTree (g, {root, nodeValue}) =
-   case dfsTrees (g, [root], nodeValue) of
-      [t] => t
-    | _ => Error.bug "DirectedGraph.dfsTree"
+   let
+      val ts = dfsForest (g, {roots = Vector.new1 root, nodeValue = nodeValue})
+   in
+      if Vector.length ts = 1
+         then Vector.sub (ts, 0)
+      else Error.bug "DirectedGraph.dfsTree"
+   end
 
 fun display {graph, layoutNode, display} =
    dfs (graph,
@@ -342,7 +347,7 @@ val _ = validDominators
 
 datatype 'a idomRes =
    Idom of Node.t
- | Root
+ | Root of bool
  | Unreachable
 
 (* This is an implementation of the simple and fast dominance algorithm
@@ -360,40 +365,40 @@ datatype 'a idomRes =
  * less than half the time on a self compile and took about half the
  * amount of code to implement.
  *)
-fun dominators (graph, {root}) =
+fun dominators (graph, {roots}) =
    let
-      val unknown = ~2
-      val visiting = ~1
+      val unknown = ~1
 
       val {get = getNum, set = setNum, rem = remNum, ...} =
-         Property.getSet (Node.plist, Property.initConst unknown)
+         Property.getSetOnce (Node.plist, Property.initConst unknown)
 
-      val nodes = Array.array (numNodes graph, root)
+      val nodes = Array.array (numNodes graph, Vector.sub (roots, 0))
       fun node i = Array.sub (nodes, i)
 
-      fun dfs (n, v) =
-         (setNum (v, visiting)
-          ; case List.fold
-                 (Node.successors v, n, fn (Edge.Edge {to, ...}, n) =>
-                  if getNum to = unknown then dfs (n, to) else n) of
-               n => (setNum (v, n) ; Array.update (nodes, n, v) ; n+1))
-      val numNodes = dfs (0, root)
+      val numNodes =
+         dfsNodes
+         (graph, Vector.toList roots,
+          DfsParam.startFinishNode
+          (0, fn (_, n) => n, fn (v, n) =>
+           (setNum (v, n) ; Array.update (nodes, n, v) ; n + 1)))
+      val fakeRootNum = numNodes
 
       val preds = Array.array (numNodes, [])
       fun addPred (t, f) = Array.update (preds, t, f :: Array.sub (preds, t))
 
       val () = Int.for (0, numNodes, fn i =>
-               List.foreach (Node.successors (node i),
-                             fn Edge.Edge {to, ...} => addPred (getNum to, i)))
+                        List.foreach (Node.successors (node i), fn e =>
+                                      addPred (getNum (Edge.to e), i)))
+      val () = Vector.foreach (roots, fn r =>
+                               addPred (getNum r, fakeRootNum))
 
       val () = Array.foreach (nodes, remNum)
 
-      val idoms = Array.array (numNodes, unknown)
+      val idoms = Array.array (numNodes + 1, unknown)
       fun idom i = Array.sub (idoms, i)
       fun setIdom (i, d) = Array.update (idoms, i, d)
 
-      val rootNum = numNodes-1
-      val () = setIdom (rootNum, rootNum)
+      val () = setIdom (fakeRootNum, fakeRootNum)
 
       fun intersect (n1, n2) =
          if n1 = n2
@@ -408,10 +413,10 @@ fun dominators (graph, {root}) =
             end
 
       fun iterate () =
-         if Int.foldDown (0, rootNum, false, fn (i, changed) => let
+         if Int.foldDown (0, fakeRootNum, false, fn (i, changed) => let
                val new =
                    case Array.sub (preds, i) of
-                      [] => raise Fail "bug"
+                      [] => raise Fail "DirectedGraph.dominators.iterate.new"
                     | p::ps =>
                       List.fold (ps, p, fn (j, new) =>
                       if idom j <> unknown then intersect (new, j) else new)
@@ -424,26 +429,35 @@ fun dominators (graph, {root}) =
 
       val {get = idomFinal, set = setIdom, ...} =
          Property.getSetOnce (Node.plist, Property.initConst Unreachable)
-      val () = setIdom (root, Root)
-      val () = Int.for (0, rootNum, fn i =>
-               setIdom (node i, Idom (node (idom i))))
+      val () = Int.for (0, fakeRootNum, fn i =>
+                        let
+                           val n = node i
+                           val idom = idom i
+                           val res =
+                              if idom = fakeRootNum
+                                 then Root (Vector.contains (roots, n, Node.equals))
+                              else Idom (node idom)
+                        in
+                           setIdom (n, res)
+                        end)
    in
       {idom = idomFinal}
    end
 
-fun dominatorTree (graph, {root: Node.t, nodeValue: Node.t -> 'a}): 'a Tree.t =
+fun dominatorForest (graph, {roots: Node.t vector, nodeValue: Node.t -> 'a}): 'a Tree.t vector =
    let
-      val {idom} = dominators (graph, {root = root})
+      val {idom} = dominators (graph, {roots = roots})
       val {get = nodeInfo, ...} =
          Property.get (Node.plist,
                        Property.initFun (fn n => {children = ref [],
                                                   value = nodeValue n}))
+      val roots = ref []
       val _ =
          List.foreach
          (nodes graph, fn n =>
           case idom n of
              Idom n' => List.push (#children (nodeInfo n'), n)
-           | Root => ()
+           | Root _ => List.push (roots, n)
            | Unreachable => ())
       fun treeAt (n: Node.t): 'a Tree.t =
          let
@@ -452,7 +466,16 @@ fun dominatorTree (graph, {root: Node.t, nodeValue: Node.t -> 'a}): 'a Tree.t =
             Tree.T (value, Vector.fromListMap (!children, treeAt))
          end
    in
-      treeAt root
+      Vector.fromListMap (!roots, treeAt)
+   end
+
+fun dominatorTree (g, {root, nodeValue}) =
+   let
+      val ts = dominatorForest (g, {roots = Vector.new1 root, nodeValue = nodeValue})
+   in
+      if Vector.length ts = 1
+         then Vector.sub (ts, 0)
+      else Error.bug "DirectedGraph.dominatorTree"
    end
 
 fun ignoreNodes (g: t, shouldIgnore: Node.t -> bool)

@@ -1,4 +1,4 @@
-(* Copyright (C) 2013 David Larsen.
+(* Copyright (C) 2013 Matthew Fluet, David Larsen.
  * Copyright (C) 2009 Matthew Fluet.
  * Copyright (C) 1999-2007 Henry Cejtin, Matthew Fluet, Suresh
  *    Jagannathan, and Stephen Weeks.
@@ -140,7 +140,6 @@ signature ME_RSSA =
              | Raise of Operand.t vector
              | Return of Operand.t vector
              | Switch of Switch.t
-             | Bug
 
             val bug: unit -> t
             (* foldDef (t, a, f)

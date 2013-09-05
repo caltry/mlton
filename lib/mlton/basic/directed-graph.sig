@@ -1,4 +1,5 @@
-(* Copyright (C) 2009 Matthew Fluet.
+(* Copyright (C) 2013 Matthew Fluet.
+ * Copyright (C) 2009 Matthew Fluet.
  * Copyright (C) 1999-2005 Henry Cejtin, Matthew Fluet, Suresh
  *    Jagannathan, and Stephen Weeks.
  *
@@ -60,26 +61,30 @@ signature DIRECTED_GRAPH =
       val coerce: 'a t -> unit t * {edge: 'a Edge.t -> unit Edge.t,
                                     node: 'a Node.t -> unit Node.t}
       val dfs: 'a t * ('a, 'b, 'c, 'd, 'e) DfsParam.t -> 'b
+      val dfsForest: 'a t * {roots: 'a Node.t vector,
+                             nodeValue: 'a Node.t -> 'b} -> 'b Tree.t vector
       val dfsNodes: 'a t * 'a Node.t list * ('a, 'b, 'c, 'd, 'e) DfsParam.t -> 'b
-      val dfsTrees: 'a t * 'a Node.t list * ('a Node.t -> 'b) -> 'b Tree.t list
       val dfsTree: 'a t * {root: 'a Node.t,
                            nodeValue: 'a Node.t -> 'b} -> 'b Tree.t
       val display:
          {graph: 'a t,
           layoutNode: 'a Node.t -> Layout.t,
           display: Layout.t -> unit} -> unit
-      (* dominators (graph, {root})
+      (* dominators (graph, {roots})
        * Returns the immediate dominator relation for the subgraph of graph
-       * rooted at root.
-       *  idom n = Root           if n = root
-       *  idom n = Idom n'        where n' is the immediate dominator of n
-       *  idom n = Unreachable    if n is not reachable from root
+       * reachable from roots.
+       *  idom n = Root true      if n has no immediate dominator and n is in roots
+       *  idom n = Root false     if n has no immediate dominator and n is not in roots
+       *  idom n = Idom n'        if n has an immediate dominator n'
+       *  idom n = Unreachable    if n is not reachable from roots
        *)
       datatype 'a idomRes =
          Idom of 'a Node.t
-       | Root
+       | Root of bool
        | Unreachable
-      val dominators: 'a t * {root: 'a Node.t} -> {idom: 'a Node.t -> 'a idomRes}
+      val dominatorForest: 'a t * {roots: 'a Node.t vector,
+                                   nodeValue: 'a Node.t -> 'b} -> 'b Tree.t vector
+      val dominators: 'a t * {roots: 'a Node.t vector} -> {idom: 'a Node.t -> 'a idomRes}
       val dominatorTree: 'a t * {root: 'a Node.t,
                                  nodeValue: 'a Node.t -> 'b} -> 'b Tree.t
       val foreachDescendent: 'a t * 'a Node.t * ('a Node.t -> unit) -> unit
@@ -188,7 +193,7 @@ local
                          out)
           ; Out.newline out
        end)
-   val {idom} = dominators (g, {root = node "entry\nfoo"})
+   val {idom} = dominators (g, {roots = Vector.new1 (node "entry\nfoo")})
    val g2 = new ()
    val {get = oldNode, set = setOldNode, ...} =
       Property.getSetOnce (Node.plist,

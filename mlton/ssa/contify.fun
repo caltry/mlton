@@ -1,4 +1,5 @@
-(* Copyright (C) 1999-2006 Henry Cejtin, Matthew Fluet, Suresh
+(* Copyright (C) 2013 Matthew Fluet.
+ * Copyright (C) 1999-2006 Henry Cejtin, Matthew Fluet, Suresh
  *    Jagannathan, and Stephen Weeks.
  * Copyright (C) 1997-2000 NEC Research Institute.
  *
@@ -415,7 +416,7 @@ structure AnalyzeDom =
           val _ = buildGraph ()
 
           fun computeDominators () = let
-          val {idom} = Graph.dominators (G, {root = Root})
+          val {idom} = Graph.dominators (G, {roots = Vector.new1 Root})
           in idom end
           val computeDominators 
             = Control.trace (Control.Detail, "computeDominators") computeDominators
@@ -428,7 +429,7 @@ structure AnalyzeDom =
                    if Node.equals (parent, Root)
                       then node
                    else ancestor parent
-              | Graph.Root => node
+              | Graph.Root _ => node
               | Graph.Unreachable => Error.bug "Contify.AnalyzeDom.ancestor: unreachable"
 
           val _
@@ -445,7 +446,7 @@ structure AnalyzeDom =
                    in
                      if (case idom f_node of
                             Graph.Idom n => Node.equals (n, Root)
-                          | Graph.Root => true
+                          | Graph.Root _ => true
                           | Graph.Unreachable => Error.bug "Contify.AnalyzeDom.idom: unreachable")
                        then if f_reach
                               then f_ADom := Unknown

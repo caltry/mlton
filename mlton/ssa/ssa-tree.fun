@@ -1024,7 +1024,7 @@ structure Function =
        *)
       datatype t =
          T of {controlFlow:
-               {dfsTrees: unit -> Block.t Tree.t list,
+               {dfsForest: unit -> Block.t Tree.t vector,
                 dominatorForest: unit -> Block.t Tree.t vector,
                 graph: unit DirectedGraph.t,
                 labelNode: Label.t -> unit DirectedGraph.Node.t,
@@ -1136,47 +1136,19 @@ structure Function =
                    in
                       ()
                    end)
-               val roots = Vector.foldr(entries, [],
-                  fn (FunctionEntry.T{start, ...}, roots) =>
-                     labelNode start :: roots)
-               val dfsTrees =
+               val roots = Vector.map (entries, labelNode o FunctionEntry.start)
+               val dfsForest =
                   Promise.lazy
                   (fn () =>
-                   Graph.dfsTrees (g, roots, #block o nodeInfo))
-
-               (* When we build the dominator forest, we create a fake root
-                * element that dominates all of the entry points; this lets us
-                * use the regular dominator tree algorithm.  We then throw away
-                * the root element, after Graph.dominatorTree has returned,
-                * since it was only there to make the forest look like a tree.
-                *)
-               val dominatorForest = Promise.lazy (fn () =>
-                  let
-                     val fakeRoot = newNode ()
-                     val fakeBlock =
-                        Block.T {args = Vector.new0 (),
-                                 label = Label.newNoname (),
-                                 statements = Vector.new0 (),
-                                 transfer = Transfer.Bug}
-                     val _ = setNodeInfo (fakeRoot, {block = fakeBlock})
-                     val () = Vector.foreach (entries,
-                         fn FunctionEntry.T{start, ...} =>
-                             let
-                                 val entry = labelNode start
-                                 val _ = Graph.addEdge (g, {from = fakeRoot,
-                                                            to = entry})
-                             in
-                                 ()
-                             end
-                         )
-                     val Tree.T (_, trees) =
-                        Graph.dominatorTree (g, {root = fakeRoot,
-                                                 nodeValue = #block o nodeInfo})
-                  in
-                     trees
-                  end)
+                   Graph.dfsForest (g, {roots = roots,
+                                        nodeValue = #block o nodeInfo}))
+               val dominatorForest =
+                  Promise.lazy
+                  (fn () =>
+                   Graph.dominatorForest (g, {roots = roots,
+                                              nodeValue = #block o nodeInfo}))
             in
-               {dfsTrees = dfsTrees,
+               {dfsForest = dfsForest,
                 dominatorForest = dominatorForest,
                 graph = g,
                 labelNode = labelNode,
