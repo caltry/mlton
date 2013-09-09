@@ -192,12 +192,10 @@ signature ME_RSSA =
          sig
             datatype t =
                 T of {args: (Var.t * Type.t) vector,
-                      function: Func.t,
                       name: FuncEntry.t,
                       start: Label.t}
 
             val args: t -> (Var.t * Type.t) vector
-            val function: t ->  Func.t
             val name: t -> FuncEntry.t
             val start: t -> Label.t
          end

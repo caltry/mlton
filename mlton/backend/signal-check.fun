@@ -1,4 +1,5 @@
-(* Copyright (C) 2009 Matthew Fluet.
+(* Copyright (C) 2013 Matthew Fluet, David Larsen.
+ * Copyright (C) 2009 Matthew Fluet.
  * Copyright (C) 1999-2007 Henry Cejtin, Matthew Fluet, Suresh
  *    Jagannathan, and Stephen Weeks.
  * Copyright (C) 1997-2000 NEC Research Institute.
@@ -154,7 +155,7 @@ fun insertInFunction (f: Function.t): Function.t =
       (* Add a signal check at each function entry. *)
       val entries = Vector.map
          (entries,
-          fn FunctionEntry.T {args, function, name, start} =>
+          fn FunctionEntry.T {args, name, start} =>
             let
                val newStart = Label.newNoname ()
                val _ =
@@ -168,7 +169,6 @@ fun insertInFunction (f: Function.t): Function.t =
                val () = loop (Graph.loopForestSteensgaard (g, {root = labelNode start}))
             in
                FunctionEntry.T {args = args,
-                                function = function,
                                 name = name,
                                 start = newStart}
             end

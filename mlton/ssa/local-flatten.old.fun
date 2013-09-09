@@ -1,5 +1,4 @@
-(* Copyright (C) 2013 Matthew Fluet.
- * Copyright (C) 1999-2006 Henry Cejtin, Matthew Fluet, Suresh
+(* Copyright (C) 1999-2006 Henry Cejtin, Matthew Fluet, Suresh
  *    Jagannathan, and Stephen Weeks.
  * Copyright (C) 1997-2000 NEC Research Institute.
  *
@@ -7,7 +6,7 @@
  * See the file MLton-LICENSE for details.
  *)
 
-functor MeLocalFlatten (S: ME_SSA_TRANSFORM_STRUCTS): ME_SSA_TRANSFORM =
+functor LocalFlatten (S: SSA_TRANSFORM_STRUCTS): SSA_TRANSFORM = 
 struct
 
 open S
@@ -87,7 +86,7 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
          List.revMap
          (functions, fn f =>
           let
-             val {blocks, entries, mayInline, name, raises, returns} =
+             val {args, blocks, mayInline, name, raises, returns, start} =
                 Function.dest f
              val _ =
                 Vector.foreach
@@ -282,12 +281,13 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
                              transfer = transfer}
                  end)
           in
-             shrink (Function.new {blocks = blocks,
-                                   entries = entries,
+             shrink (Function.new {args = args,
+                                   blocks = blocks,
                                    mayInline = mayInline,
                                    name = name,
                                    raises = raises,
-                                   returns = returns})
+                                   returns = returns,
+                                   start = start})
           end)
       val program = Program.T {datatypes = datatypes,
                                globals = globals,

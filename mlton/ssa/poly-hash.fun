@@ -1,4 +1,4 @@
-(* Copyright (C) 2013 David Larsen.
+(* Copyright (C) 2013 Matthew Fluet, David Larsen.
  * Copyright (C) 2009-2010 Matthew Fluet.
  * Copyright (C) 1999-2008 Henry Cejtin, Matthew Fluet, Suresh
  *    Jagannathan, and Stephen Weeks.
@@ -398,7 +398,6 @@ fun transform (Program.T {datatypes, globals, functions, main}) =
                   val (start, blocks) = Dexp.linearize (body, Handler.Caller)
                   val blocks = Vector.fromList blocks
                   val entry = FunctionEntry.T{args = args,
-                                              function = name,
                                               name = entryName,
                                               start = start}
                   val _ =
@@ -452,7 +451,6 @@ fun transform (Program.T {datatypes, globals, functions, main}) =
                      val (start, blocks) = Dexp.linearize (body, Handler.Caller)
                      val blocks = Vector.fromList blocks
                      val entry = FunctionEntry.T {args = args,
-                                                  function = name,
                                                   name = entryName,
                                                   start = start}
                   in
@@ -510,7 +508,6 @@ fun transform (Program.T {datatypes, globals, functions, main}) =
                      val (start, blocks) = Dexp.linearize (body, Handler.Caller)
                      val blocks = Vector.fromList blocks
                      val loopEntry = FunctionEntry.T {args = args,
-                                                      function = loop,
                                                       name = loopEntry,
                                                       start = start}
                   in
@@ -682,7 +679,6 @@ fun transform (Program.T {datatypes, globals, functions, main}) =
                   val (start, blocks) = Dexp.linearize (body, Handler.Caller)
                   val blocks = Vector.fromList blocks
                   val entry = FunctionEntry.T {args = args,
-                                               function = name,
                                                name = entryName,
                                                start = start}
                   val _ =

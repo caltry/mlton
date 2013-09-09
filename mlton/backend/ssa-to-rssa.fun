@@ -1,4 +1,4 @@
-(* Copyright (C) 2013 David Larsen.
+(* Copyright (C) 2013 Matthew Fluet, David Larsen.
  * Copyright (C) 2009,2011 Matthew Fluet.
  * Copyright (C) 1999-2008 Henry Cejtin, Matthew Fluet, Suresh
  *    Jagannathan, and Stephen Weeks.
@@ -1506,9 +1506,8 @@ fun convert (program as S.Program.T {functions, globals, main, ...},
             val _ = extraBlocks := []
             val entries = Vector.map
                 (entries,
-                 fn S.FunctionEntry.T {args, function, name, start} =>
+                 fn S.FunctionEntry.T {args, name, start} =>
                     FunctionEntry.T {args = translateFormals args,
-                                     function = function,
                                      name = name,
                                      start = start}
                 )
@@ -1528,20 +1527,6 @@ fun convert (program as S.Program.T {functions, globals, main, ...},
              val bug = Label.newNoname ()
              val main_name = Func.newNoname ()
              val entry_name = FuncEntry.newNoname ()
-             val entry = S.FunctionEntry.T {args = Vector.new0 (),
-                                            function = main_name,
-                                            name = entry_name,
-                                            start = start}
-             val ssaMainFunction = S.Program.mainFunction program
-             val {name = ssaMainFuncName, ...} = S.Function.dest ssaMainFunction
-
-             (* Sanity test: 'main' == S.Program.mainFunctionEntry *)
-             val S.FunctionEntry.T {name = ssaMainFuncEntry, ...} =
-                S.Program.mainFunctionEntry program
-             val () =
-                if FuncEntry.equals (main, ssaMainFuncEntry)
-                    then ()
-                    else Error.bug "'main' is not a function entry in the main SSA function."
           in
              (translateFunction
                  (S.Function.profile
@@ -1553,8 +1538,8 @@ fun convert (program as S.Program.T {functions, globals, main, ...},
                                 statements = globals,
                                 transfer = (S.Transfer.Call
                                             {args = Vector.new0 (),
-                                             entry = main,
-                                             func = ssaMainFuncName,
+                                             entry = #entry main,
+                                             func = #func main,
                                              return =
                                              S.Return.NonTail
                                              {cont = bug,
@@ -1564,7 +1549,11 @@ fun convert (program as S.Program.T {functions, globals, main, ...},
                                 args = Vector.new0 (),
                                 statements = Vector.new0 (),
                                 transfer = S.Transfer.Bug})),
-                    entries = Vector.new1 entry,
+                    entries = (Vector.new1
+                               (S.FunctionEntry.T
+                                {args = Vector.new0 (),
+                                 name = entry_name,
+                                 start = start})),
                     mayInline = false, (* doesn't matter *)
                     name = main_name,
                     raises = NONE,

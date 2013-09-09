@@ -1,4 +1,5 @@
-(* Copyright (C) 2004-2008 Henry Cejtin, Matthew Fluet, Suresh
+(* Copyright (C) 2013 Matthew Fluet, David Larsen.
+ * Copyright (C) 2004-2008 Henry Cejtin, Matthew Fluet, Suresh
  *    Jagannathan, and Stephen Weeks.
  *
  * MLton is released under a BSD-style license.
@@ -287,9 +288,8 @@ fun convert (S.Program.T {datatypes, functions, globals, main}) =
              val blocks = Vector.concat [blocks, Vector.fromList (!extraBlocks)]
              val () = extraBlocks := []
              val entries = Vector.map
-                (entries, fn S.FunctionEntry.T {args, function, name, start} =>
+                (entries, fn S.FunctionEntry.T {args, name, start} =>
                    S2.FunctionEntry.T {args = convertFormals args,
-                                       function = function,
                                        name = name,
                                        start = start}
                 )

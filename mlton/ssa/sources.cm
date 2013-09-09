@@ -93,9 +93,13 @@ restore.fun
 
 ssa-transform.old.sig
 ssa-transform.sig
+ssa2-transform.old.sig
 ssa2-transform.sig
+common-arg.old.fun
 common-arg.fun
+common-block.old.fun
 common-block.fun
+common-subexp.old.fun
 common-subexp.fun
 global.old.sig
 global.old.fun
@@ -105,10 +109,12 @@ multi.old.sig
 multi.old.fun
 multi.sig
 multi.fun
+combine-conversions.old.fun
 combine-conversions.fun
 constant-propagation.old.fun
 constant-propagation.fun
 contify.fun
+deep-flatten.old.fun
 deep-flatten.fun
 duplicate-entries.fun
 flatten.fun
@@ -116,10 +122,13 @@ inline.old.sig
 inline.old.fun
 inline.sig
 inline.fun
+introduce-loops.old.fun
 introduce-loops.fun
 known-case.fun
+local-flatten.old.fun
 local-flatten.fun
 local-ref.fun
+loop-invariant.old.fun
 loop-invariant.fun
 poly-equal.old.fun
 poly-equal.fun
@@ -129,11 +138,16 @@ profile.sig
 profile.fun
 profile2.sig
 profile2.fun
+redundant-tests.old.fun
 redundant-tests.fun
 redundant.fun
+ref-flatten.old.fun
 ref-flatten.fun
+remove-unused.old.fun
 remove-unused.fun
+remove-unused2.old.fun
 remove-unused2.fun
+simplify-types.old.fun
 simplify-types.fun
 useless.fun
 zone.fun

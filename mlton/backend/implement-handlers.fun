@@ -1,4 +1,5 @@
-(* Copyright (C) 1999-2006 Henry Cejtin, Matthew Fluet, Suresh
+(* Copyright (C) 2013 Matthew Fluet, David Larsen.
+ * Copyright (C) 1999-2006 Henry Cejtin, Matthew Fluet, Suresh
  *    Jagannathan, and Stephen Weeks.
  * Copyright (C) 1997-2000 NEC Research Institute.
  *
@@ -193,7 +194,7 @@ fun flow (f: Function.t): Function.t =
           end)
       val (newEntries, newStartBlocks) = Vector.fold
          (entries, ([],[]),
-          fn (FunctionEntry.T {args, function, name, start},
+          fn (FunctionEntry.T {args, name, start},
               (newEntries, newStartBlocks)) =>
             let
                val newStart = Label.newNoname ()
@@ -206,7 +207,6 @@ fun flow (f: Function.t): Function.t =
                                             dst = start}}
                val newEntry = FunctionEntry.T {args = args,
                                                name = name,
-                                               function = function,
                                                start = newStart}
             in
                (newEntry :: newEntries, startBlock :: newStartBlocks)

@@ -1,5 +1,4 @@
-(* Copyright (C) 2013 Matthew Fluet.
- * Copyright (C) 2009 Matthew Fluet.
+(* Copyright (C) 2009 Matthew Fluet.
  * Copyright (C) 2004-2008 Henry Cejtin, Matthew Fluet, Suresh
  *    Jagannathan, and Stephen Weeks.
  *
@@ -7,7 +6,7 @@
  * See the file MLton-LICENSE for details.
  *)
 
-functor MeRefFlatten (S: ME_SSA2_TRANSFORM_STRUCTS): ME_SSA2_TRANSFORM =
+functor RefFlatten (S: SSA2_TRANSFORM_STRUCTS): SSA2_TRANSFORM = 
 struct
 
 open S
@@ -1113,23 +1112,18 @@ fun transform2 (program as Program.T {datatypes, functions, globals, main}) =
           end)
       fun transformFunction (f: Function.t): Function.t =
           let
-             val {blocks, entries, mayInline, name, ...} = Function.dest f
-             val entries =
-                Vector.map
-                (entries, fn FunctionEntry.T {args, name, start} =>
-                 FunctionEntry.T {args = transformFormals args,
-                                  name = name,
-                                  start = start})
+             val {args, blocks, mayInline, name, start, ...} = Function.dest f
              val {raises, returns, ...} = func name
              val raises = Option.map (raises, valuesTypes)
              val returns = Option.map (returns, valuesTypes)
           in
-             Function.new {blocks = Vector.map (blocks, transformBlock),
-                           entries = entries,
+             Function.new {args = transformFormals args,
+                           blocks = Vector.map (blocks, transformBlock),
                            mayInline = mayInline,
                            name = name,
                            raises = raises,
-                           returns = returns}
+                           returns = returns,
+                           start = start}
           end
       val program =
          Program.T {datatypes = datatypes,

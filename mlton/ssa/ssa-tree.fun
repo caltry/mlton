@@ -978,7 +978,6 @@ structure FunctionEntry =
       datatype t =
         T of {
               args: (Var.t * Type.t) vector,
-              function: Func.t,
               name : FuncEntry.t,
               start: Label.t
               }
@@ -987,7 +986,6 @@ structure FunctionEntry =
          fun make f (T r) = f r
       in
          val args = make #args
-         val function = make #function
          val name = make #name
          val start = make #start
       end
@@ -1288,12 +1286,12 @@ structure Function =
                    in
                       ()
                    end)
-               val roots = Vector.toListMap (entries, labelNode o FunctionEntry.start)
+               val roots = Vector.map (entries, labelNode o FunctionEntry.start)
                val graphLayout =
                   Graph.layoutDot
                   (graph, fn {nodeName} => 
                    {title = concat [Func.toString name, " control-flow graph"],
-                    options = [GraphOption.Rank (Min, List.map (roots, fn root => {nodeName = nodeName root}))],
+                    options = [GraphOption.Rank (Min, Vector.toListMap (roots, fn root => {nodeName = nodeName root}))],
                     edgeOptions = edgeOptions,
                     nodeOptions =
                     fn n => let
@@ -1302,8 +1300,7 @@ structure Function =
                             in FontColor Black :: Shape Box :: l
                             end}
                   )
-               (* FIXME: implement layout for dominator forest *)
-               fun treeLayout () =
+               fun forestLayout () =
                   let
                      val {get = nodeOptions, set = setNodeOptions, ...} =
                         Property.getSetOnce (Node.plist, Property.initConst [])
@@ -1312,19 +1309,16 @@ structure Function =
                         (blocks, fn Block.T {label, ...} =>
                          setNodeOptions (labelNode label,
                                          [NodeOption.label (Label.toString label)]))
-                     (*
-                     val treeLayout =
-                        Tree.layoutDot
-                        (Graph.dominatorTree (graph,
-                                              {root = root,
-                                               nodeValue = fn n => n}),
-                         {title = concat [Func.toString name, " dominator tree"],
+                     val forestLayout =
+                        Tree.Forest.layoutDot
+                        (Graph.dominatorForest (graph,
+                                                {roots = roots,
+                                                 nodeValue = fn n => n}),
+                         {title = concat [Func.toString name, " dominator forest"],
                           options = [],
                           nodeOptions = nodeOptions})
-                        *)
                   in
-                     (* treeLayout *)
-                     Error.bug "Function.treeLayout unimplemented"
+                     forestLayout
                   end
                (*
                fun loopForestLayout () =
@@ -1349,7 +1343,7 @@ structure Function =
             in
                {destroy = destroy,
                 graph = graphLayout,
-                tree = treeLayout}
+                forest = forestLayout}
             end
       end
 
@@ -1417,8 +1411,7 @@ structure Function =
                   then ()
                else
                   let
-                     val {destroy, graph, tree} = 
-                        layoutDot (f, global)
+                     val {destroy, graph, forest} = layoutDot (f, global)
                      val name = Func.toString name
                      fun doit (s, g) =
                         let
@@ -1430,7 +1423,7 @@ structure Function =
                         end
                      val _ = doit ("cfg", graph)
                         handle _ => Error.warning "SsaTree.layouts: couldn't layout cfg"
-                     val _ = doit ("dom", tree ())
+                     val _ = doit ("dom", forest ())
                         handle _ => Error.warning "SsaTree.layouts: couldn't layout dom"
                      (*
                      val _ = doit ("lf", loopForest ())
@@ -1474,11 +1467,10 @@ structure Function =
                dest f
             val entries : FunctionEntry.t vector =
                Vector.map (entries,
-                  (fn (FunctionEntry.T{args, name, function, start}) =>
+                  (fn (FunctionEntry.T{args, name, start}) =>
                      FunctionEntry.T{
                         args = Vector.map(args, fn (x, ty) => (bindVar x, ty)),
                         name = name,
-                        function = function,
                         start = start}
                   )
                )
@@ -1509,9 +1501,8 @@ structure Function =
                          transfer = Transfer.replaceLabelVar
                                     (transfer, lookupLabel, lookupVar)})
             val entries = Vector.map (entries,
-               fn FunctionEntry.T {args, name, function, start} =>
+               fn FunctionEntry.T {args, name, start} =>
                   FunctionEntry.T {args = args,
-                                   function = function,
                                    name = name,
                                    start = lookupLabel start}
                )
@@ -1674,7 +1665,7 @@ structure Program =
                datatypes: Datatype.t vector,
                globals: Statement.t vector,
                functions: Function.t list,
-               main: FuncEntry.t
+               main: {entry: FuncEntry.t, func: Func.t}
                }
    end
 
@@ -1769,7 +1760,7 @@ structure Program =
                    in
                       ()
                    end)
-               val root = funcEntryNode main
+               val root = funcEntryNode (#entry main)
                val l =
                   Graph.layoutDot
                   (graph, fn {nodeName} =>
@@ -1798,7 +1789,10 @@ structure Program =
             ; Vector.foreach (datatypes, output o Datatype.layout)
             ; output (str "\n\nGlobals:")
             ; Vector.foreach (globals, output o Statement.layout)
-            ; output (seq [str "\n\nMain: ", FuncEntry.layout main])
+            ; output (seq [str "\n\nMain: ",
+                           Func.layout (#func main),
+                           str "@",
+                           FuncEntry.layout (#entry main)])
             ; output (str "\n\nFunctions:")
             ; List.foreach (functions, fn f =>
                             Function.layouts (f, global, output))
@@ -1817,16 +1811,9 @@ structure Program =
 
       fun mainFunction (T {functions, main, ...}) =
          case List.peek (functions, fn f =>
-               Vector.exists (Function.entries f, fn e =>
-                         FuncEntry.equals (main, FunctionEntry.name e))) of
+                         Func.equals (#func main, Function.name f)) of
             NONE => Error.bug "SsaTree.Program.mainFunction: no main function"
           | SOME f => f
-
-      fun mainFunctionEntry (program as T{main,...}) =
-         case Vector.peek (Function.entries (mainFunction program), fn e =>
-             FuncEntry.equals (main, FunctionEntry.name e)) of
-            NONE     => Error.bug "SsaTree.Program.mainFunctionEntry: no main function entry"
-          | SOME  e  => e
 
       fun layoutStats (program as T{datatypes, globals, functions, main, ...})=
          let
@@ -1926,7 +1913,12 @@ structure Program =
 
       fun clearTop (p as T {datatypes, functions, ...}) =
          (Vector.foreach (datatypes, Datatype.clear)
-          ; List.foreach (functions, Func.clear o Function.name)
+          ; List.foreach
+            (functions, fn f =>
+             (Func.clear (Function.name f)
+              ; Vector.foreach
+                (Function.entries f, fn e =>
+                 FuncEntry.clear (FunctionEntry.name e))))
           ; clearGlobals p)
 
       fun foreachVar (T {globals, functions, ...}, f) =
@@ -1994,8 +1986,7 @@ structure Program =
                         ()
                      end
                end
-            (* FIXME: have a constant time way to get the Func.t *)
-            val _ = visit (Function.name (mainFunction p))
+            val _ = visit (#func main)
             val _ = Vector.foreach (functions, rem o Function.name)
          in
             ()

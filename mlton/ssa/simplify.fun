@@ -1,4 +1,5 @@
-(* Copyright (C) 2009 Matthew Fluet.
+(* Copyright (C) 2013 Matthew Fluet, David Larsen.
+ * Copyright (C) 2009 Matthew Fluet.
  * Copyright (C) 1999-2008 Henry Cejtin, Matthew Fluet, Suresh
  *    Jagannathan, and Stephen Weeks.
  * Copyright (C) 1997-2000 NEC Research Institute.
@@ -12,34 +13,35 @@ struct
 
 open S
 
-(*
-structure CommonArg = CommonArg (S)
-structure CommonBlock = CommonBlock (S)
-structure CommonSubexp = CommonSubexp (S)
-structure CombineConversions = CombineConversions (S)
-*)
+structure CommonArg = MeCommonArg (S)
+structure CommonBlock = MeCommonBlock (S)
+structure CommonSubexp = MeCommonSubexp (S)
+structure CombineConversions = MeCombineConversions (S)
 structure ConstantPropagation = MeConstantPropagation (S)
 (*
-structure Contify = Contify (S)
 structure Flatten = Flatten (S)
 *)
 structure DuplicateEntries = MeDuplicateEntries (S)
 structure Inline = MeInline (S)
+structure IntroduceLoops = MeIntroduceLoops (S)
 (*
-structure IntroduceLoops = IntroduceLoops (S)
 structure KnownCase = KnownCase (S)
-structure LocalFlatten = LocalFlatten (S)
-structure LocalRef = LocalRef (S)
-structure LoopInvariant = LoopInvariant (S)
 *)
+structure LocalFlatten = MeLocalFlatten (S)
+(*
+structure LocalRef = LocalRef (S)
+*)
+structure LoopInvariant = MeLoopInvariant (S)
 structure PolyEqual = MePolyEqual (S)
 structure PolyHash = MePolyHash (S)
 (*
 structure Profile = Profile (S)
 structure Redundant = Redundant (S)
-structure RedundantTests = RedundantTests (S)
-structure RemoveUnused = RemoveUnused (S)
-structure SimplifyTypes = SimplifyTypes (S)
+*)
+structure RedundantTests = MeRedundantTests (S)
+structure RemoveUnused = MeRemoveUnused (S)
+structure SimplifyTypes = MeSimplifyTypes (S)
+(*
 structure Useless = Useless (S)
 *)
 
@@ -47,21 +49,19 @@ type pass = {name: string,
              doit: Program.t -> Program.t}
 
 val ssaPassesDefault =
-   (* TODO: Uncomment as these passes are converted into the multi-entry SSA
-            IL.
-
+   (* TODO: Uncomment as these passes are converted into the multi-entry SSA IL. *)
+   {name = "duplicateEntries", doit = DuplicateEntries.transform} ::
    {name = "removeUnused1", doit = RemoveUnused.transform} ::
    {name = "introduceLoops1", doit = IntroduceLoops.transform} ::
    {name = "loopInvariant1", doit = LoopInvariant.transform} ::
-   *)
    {name = "inlineLeaf1", doit = fn p => 
     Inline.inlineLeaf (p, !Control.inlineLeafA)} ::
    {name = "inlineLeaf2", doit = fn p => 
     Inline.inlineLeaf (p, !Control.inlineLeafB)} ::
    (*
    {name = "contify1", doit = Contify.transform} ::
-   {name = "localFlatten1", doit = LocalFlatten.transform} ::
    *)
+   {name = "localFlatten1", doit = LocalFlatten.transform} ::
    {name = "constantPropagation", doit = ConstantPropagation.transform} ::
    (*
    (* useless should run 
@@ -69,9 +69,9 @@ val ssaPassesDefault =
     *     slots of tuples that are constant useless
     *)
    {name = "useless", doit = Useless.transform} ::
+   *)
    {name = "removeUnused2", doit = RemoveUnused.transform} ::
    {name = "simplifyTypes", doit = SimplifyTypes.transform} ::
-   *)
    (* polyEqual should run
     *   - after types are simplified so that many equals are turned into eqs
     *   - before inlining so that equality functions can be inlined
@@ -82,32 +82,35 @@ val ssaPassesDefault =
     *   - before inlining so that hash functions can be inlined
     *)
    {name = "polyHash", doit = PolyHash.transform} ::
-   (*
    {name = "introduceLoops2", doit = IntroduceLoops.transform} ::
    {name = "loopInvariant2", doit = LoopInvariant.transform} ::
+   (*
    {name = "contify2", doit = Contify.transform} ::
    *)
    {name = "inlineNonRecursive", doit = fn p =>
     Inline.inlineNonRecursive (p, !Control.inlineNonRec)} ::
-   (*
    {name = "localFlatten2", doit = LocalFlatten.transform} ::
    {name = "removeUnused3", doit = RemoveUnused.transform} ::
+   (*
    {name = "contify3", doit = Contify.transform} ::
+   *)
    {name = "introduceLoops3", doit = IntroduceLoops.transform} ::
    {name = "loopInvariant3", doit = LoopInvariant.transform} ::
+   (*
    {name = "localRef", doit = LocalRef.transform} ::
    {name = "flatten", doit = Flatten.transform} ::
+   *)
    {name = "localFlatten3", doit = LocalFlatten.transform} ::
    {name = "combineConversions", doit = CombineConversions.transform} ::
    {name = "commonArg", doit = CommonArg.transform} ::
    {name = "commonSubexp", doit = CommonSubexp.transform} ::
    {name = "commonBlock", doit = CommonBlock.transform} ::
    {name = "redundantTests", doit = RedundantTests.transform} ::
+   (*
    {name = "redundant", doit = Redundant.transform} ::
    {name = "knownCase", doit = KnownCase.transform} ::
-   {name = "removeUnused4", doit = RemoveUnused.transform} ::
    *)
-   {name = "duplicateEntries", doit = DuplicateEntries.transform} ::
+   {name = "removeUnused4", doit = RemoveUnused.transform} ::
    nil
 
 val ssaPassesMinimal =
@@ -209,41 +212,46 @@ local
 
    val passGens = 
       inlinePassGen ::
-      (List.map([(* TODO: Uncomment as these passes are converted into the
-                    multi-entry SSA IL.
-
+      (List.map([(* TODO: Uncomment as these passes are converted into the multi-entry SSA IL. *)
+                 (*
                  ("addProfile", Profile.addProfile),
+                 *)
                  ("combineConversions",  CombineConversions.transform),
                  ("commonArg", CommonArg.transform),
                  ("commonBlock", CommonBlock.transform),
                  ("commonSubexp", CommonSubexp.transform),
-                 *)
                  ("constantPropagation", ConstantPropagation.transform),
                  (*
                  ("contify", Contify.transform),
                  ("dropProfile", Profile.dropProfile),
                  ("flatten", Flatten.transform),
-                 ("introduceLoops", IntroduceLoops.transform),
-                 ("knownCase", KnownCase.transform),
-                 ("localFlatten", LocalFlatten.transform),
-                 ("localRef", LocalRef.transform),
-                 ("loopInvariant", LoopInvariant.transform),
                  *)
+                 ("introduceLoops", IntroduceLoops.transform),
+                 (*
+                 ("knownCase", KnownCase.transform),
+                 *)
+                 ("localFlatten", LocalFlatten.transform),
+                 (*
+                 ("localRef", LocalRef.transform),
+                 *)
+                 ("loopInvariant", LoopInvariant.transform),
                  ("polyEqual", PolyEqual.transform),
-                 ("polyHash", PolyHash.transform)
-                 (*,
+                 ("polyHash", PolyHash.transform),
+                 (*
                  ("redundant", Redundant.transform),
+                 *)
                  ("redundantTests", RedundantTests.transform),
                  ("removeUnused", RemoveUnused.transform),
                  ("simplifyTypes", SimplifyTypes.transform),
+                 (*
                  ("useless", Useless.transform),
+                 *)
                  ("breakCriticalEdges",fn p => 
                   S.breakCriticalEdges (p, {codeMotion = true})),
                  ("eliminateDeadBlocks",S.eliminateDeadBlocks),
                  ("orderFunctions",S.orderFunctions),
                  ("reverseFunctions",S.reverseFunctions),
-                 ("shrink", S.shrink)
-                 *)],
+                 ("shrink", S.shrink)],
                 mkSimplePassGen))
 in
    fun ssaPassesSetCustom s =

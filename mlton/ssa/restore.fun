@@ -1,4 +1,4 @@
-(* Copyright (C) 2013 David Larsen.
+(* Copyright (C) 2013 Matthew Fluet, David Larsen.
  * Copyright (C) 2009 Matthew Fluet.
  * Copyright (C) 1999-2007 Henry Cejtin, Matthew Fluet, Suresh
  *    Jagannathan, and Stephen Weeks.
@@ -650,7 +650,7 @@ fun restoreFunction {globals: Statement.t vector}
                   (entryBlocks,
                   fn {newEntryBlock = entryBlock, functionEntry = entry} =>
                      let
-                        val FunctionEntry.T {function, name, ...} = entry
+                        val FunctionEntry.T {name, ...} = entry
                         val (Block.T {label, args, statements, transfer}, post)
                            = visitBlock' entryBlock
                         val entryBlock = Block.T {label = label,
@@ -659,7 +659,6 @@ fun restoreFunction {globals: Statement.t vector}
                                                   transfer = transfer}
                         val _ = List.push(blocks, entryBlock)
                         val entry = FunctionEntry.T {args = args,
-                                                     function = function,
                                                      name = name,
                                                      start = label}
                      in

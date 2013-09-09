@@ -1,4 +1,5 @@
-(* Copyright (C) 1999-2005, 2008 Henry Cejtin, Matthew Fluet, Suresh
+(* Copyright (C) 2013 Matthew Fluet.
+ * Copyright (C) 1999-2005, 2008 Henry Cejtin, Matthew Fluet, Suresh
  *    Jagannathan, and Stephen Weeks.
  * Copyright (C) 1997-2000 NEC Research Institute.
  *
@@ -6,10 +7,10 @@
  * See the file MLton-LICENSE for details.
  *)
 
-(* Change any toplevel function that only calls itself in tail position
- * into one with a local loop and no self calls.
+(* Change any toplevel function that calls itself in tail position
+ * into one with a local loop and no self tail-calls.
  *)
-functor IntroduceLoops (S: SSA_TRANSFORM_STRUCTS): SSA_TRANSFORM = 
+functor MeIntroduceLoops (S: ME_SSA_TRANSFORM_STRUCTS): ME_SSA_TRANSFORM =
 struct
 
 open S
@@ -33,21 +34,23 @@ fun transform (Program.T {datatypes, globals, functions, main}) =
          List.revMap
          (functions, fn f =>
           let
-             val {args, blocks, mayInline, name, raises, returns, start} =
+             val {blocks, entries, mayInline, name, raises, returns} =
                 Function.dest f
-             val tailCallsItself = ref false
+             val selfTailCallEntries = ref []
              val _ =
                 Vector.foreach
                 (blocks, fn Block.T {transfer, ...} =>
                  case transfer of
-                    Call {func, return, ...} =>
+                    Call {func, entry, return, ...} =>
                        if Func.equals (name, func)
                           andalso Return.isTail return
-                          then tailCallsItself := true
+                          then List.push (selfTailCallEntries, entry)
                        else ()
                   | _ => ())
-             val (args, start, blocks) =
-                if !tailCallsItself
+             val selfTailCallEntries =
+                List.removeDuplicates (!selfTailCallEntries, FuncEntry.equals)
+             val (entries, blocks) =
+                if not (List.isEmpty selfTailCallEntries)
                    then
                       let
                          val _ = Control.diagnostics
@@ -56,21 +59,53 @@ fun transform (Program.T {datatypes, globals, functions, main}) =
                              in
                                 display (Func.layout name)
                              end)
-                         val newArgs =
-                            Vector.map (args, fn (x, t) => (Var.new x, t))
-                         val loopName = Label.newString "loop"
-                         val loopSName = Label.newString "loopS"
+                         val {get = entryToLoop : FuncEntry.t -> Label.t,
+                              rem = remEntryToLoop,
+                              set = setEntryToLoop} =
+                            Property.getSetOnce
+                            (FuncEntry.plist,
+                             Property.initRaise ("IntroduceLoops.entryToLoop", FuncEntry.layout))
+                         val (entries, newBlocks) =
+                            Vector.mapAndFold
+                            (entries, [], fn (entry as FunctionEntry.T {args, name, start}, newBlocks) =>
+                             if List.contains (selfTailCallEntries, name, FuncEntry.equals)
+                                then let
+                                        val newArgs =
+                                           Vector.map (args, fn (x, t) => (Var.new x, t))
+                                        val loopName = Label.newString "loop"
+                                        val loopSName = Label.newString "loopS"
+                                        val () = setEntryToLoop (name, loopName)
+                                     in
+                                        (FunctionEntry.T
+                                         {args = newArgs,
+                                          name = name,
+                                          start = loopSName},
+                                         Block.T
+                                         {label = loopSName,
+                                          args = Vector.new0 (),
+                                          statements = Vector.new0 (),
+                                          transfer = Goto {dst = loopName,
+                                                           args = Vector.map (newArgs, #1)}} ::
+                                         Block.T
+                                         {label = loopName,
+                                          args = args,
+                                          statements = Vector.new0 (),
+                                          transfer = Goto {dst = start,
+                                                           args = Vector.new0 ()}} ::
+                                         newBlocks)
+                                     end
+                             else (entry, newBlocks))
                          val blocks = 
-                            Vector.toListMap
+                            Vector.map
                             (blocks,
                              fn Block.T {label, args, statements, transfer} =>
                              let
                                 val transfer =
                                    case transfer of
-                                      Call {func, args, return} =>
+                                      Call {func, entry, args, return} =>
                                          if Func.equals (name, func)
                                             andalso Return.isTail return
-                                            then Goto {dst = loopName, 
+                                            then Goto {dst = entryToLoop entry,
                                                        args = args}
                                          else transfer
                                     | _ => transfer
@@ -80,35 +115,18 @@ fun transform (Program.T {datatypes, globals, functions, main}) =
                                          statements = statements,
                                          transfer = transfer}
                              end)
-                         val blocks = 
-                            Vector.fromList
-                            (Block.T 
-                             {label = loopSName,
-                              args = Vector.new0 (),
-                              statements = Vector.new0 (),
-                              transfer = Goto {dst = loopName,
-                                               args = Vector.map (newArgs, #1)}} ::
-                             Block.T 
-                             {label = loopName,
-                              args = args,
-                              statements = Vector.new0 (),
-                              transfer = Goto {dst = start,
-                                               args = Vector.new0 ()}} ::
-                             blocks)
+                         val () = List.foreach (selfTailCallEntries, remEntryToLoop)
                       in
-                         (newArgs,
-                          loopSName,
-                          blocks)
+                         (entries, Vector.concat [Vector.fromList newBlocks, blocks])
                       end
-                else (args, start, blocks)
+                else (entries, blocks)
           in
-             Function.new {args = args,
-                           blocks = blocks,
+             Function.new {blocks = blocks,
+                           entries = entries,
                            mayInline = mayInline,
                            name = name,
                            raises = raises,
-                           returns = returns,
-                           start = start}
+                           returns = returns}
           end)
    in
       Program.T {datatypes = datatypes,

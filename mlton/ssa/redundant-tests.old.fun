@@ -1,5 +1,4 @@
-(* Copyright (C) 2013 Matthew Fluet.
- * Copyright (C) 2009 Matthew Fluet.
+(* Copyright (C) 2009 Matthew Fluet.
  * Copyright (C) 1999-2006 Henry Cejtin, Matthew Fluet, Suresh
  *    Jagannathan, and Stephen Weeks.
  * Copyright (C) 1997-2000 NEC Research Institute.
@@ -8,7 +7,7 @@
  * See the file MLton-LICENSE for details.
  *)
 
-functor MeRedundantTests (S: ME_SSA_TRANSFORM_STRUCTS): ME_SSA_TRANSFORM =
+functor RedundantTests (S: SSA_TRANSFORM_STRUCTS): SSA_TRANSFORM = 
 struct
 
 open S
@@ -175,7 +174,7 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
       val numSimplified = ref 0
       fun simplifyFunction f =
           let
-             val {blocks, entries, mayInline, name, raises, returns} =
+             val {args, blocks, mayInline, name, raises, returns, start} =
                 Function.dest f
              val _ =
                 Control.diagnostic
@@ -193,10 +192,7 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
                                                          inDeg = ref 0}))
              (* Set up inDeg. *)
              fun inc l = Int.inc (#inDeg (labelInfo l))
-             val () =
-                Vector.foreach
-                (entries, fn FunctionEntry.T {start, ...} =>
-                 inc start)
+             val () = inc start
              val _ =
                 Vector.foreach
                 (blocks, fn Block.T {transfer, ...} =>
@@ -284,9 +280,7 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
                    Vector.foreach 
                    (children, fn tree => loop (tree, ancestor'))
                 end
-             val _ =
-                Vector.foreach
-                (Function.dominatorForest f, fn tree => loop (tree, NONE))
+             val _ = loop (Function.dominatorTree f, NONE)
              (* Diagnostic. *)
              val _ = 
                 Control.diagnostics
@@ -488,12 +482,13 @@ fun transform (Program.T {globals, datatypes, functions, main}) =
                             transfer = transfer}
                  end)
           in
-             shrink (Function.new {blocks = blocks,
-                                   entries = entries,
+             shrink (Function.new {args = args,
+                                   blocks = blocks,
                                    mayInline = mayInline,
                                    name = name,
                                    raises = raises,
-                                   returns = returns})
+                                   returns = returns,
+                                   start = start})
           end
       val _ =
          Control.diagnostic

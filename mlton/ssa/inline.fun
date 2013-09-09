@@ -1,4 +1,5 @@
-(* Copyright (C) 2009 Matthew Fluet.
+(* Copyright (C) 2013 Matthew Fluet, David Larsen.
+ * Copyright (C) 2009 Matthew Fluet.
  * Copyright (C) 1999-2007 Henry Cejtin, Matthew Fluet, Suresh
  *    Jagannathan, and Stephen Weeks.
  * Copyright (C) 1997-2000 NEC Research Institute.
@@ -537,7 +538,7 @@ fun transform {program as Program.T {datatypes, globals, functions, main},
                 end
           in
              if Vector.exists (entries, fn FunctionEntry.T{name, ...} =>
-                 FuncEntry.equals(name, main))
+                 FuncEntry.equals(name, #entry main))
                 then if inlineIntoMain
                         then keep ()
                      else f :: ac

@@ -634,60 +634,60 @@ fun preCodegen {input: MLBString.t}: Machine.Program.t =
                                 Layouts Sxml.Program.layouts)
             else ()
          end
-      val memachine =
+      val machine =
          if !Control.checkMultiEntry
             then let
-                    val messa =
+                    val ssa =
                        Control.passTypeCheck
                        {display = Control.Layouts MeSsa.Program.layouts,
-                        name = "meClosureConvert",
+                        name = "closureConvert",
                         stats = MeSsa.Program.layoutStats,
                         style = Control.No,
-                        suffix = "messa",
+                        suffix = "ssa",
                         thunk = fn () => MeClosureConvert.closureConvert sxml,
                         typeCheck = MeSsa.typeCheck}
-                    val messa =
+                    val ssa =
                        Control.passTypeCheck
                        {display = Control.Layouts MeSsa.Program.layouts,
-                        name = "meSsaSimplify",
+                        name = "ssaSimplify",
                         stats = MeSsa.Program.layoutStats,
                         style = Control.No,
-                        suffix = "messa",
-                        thunk = fn () => MeSsa.simplify messa,
+                        suffix = "ssa",
+                        thunk = fn () => MeSsa.simplify ssa,
                         typeCheck = MeSsa.typeCheck}
                     val _ =
                        let
                           open Control
                        in
                           if !keepSSA
-                             then saveToFile ({suffix = "messa"}, No, messa,
+                             then saveToFile ({suffix = "ssa"}, No, ssa,
                                               Layouts MeSsa.Program.layouts)
                           else ()
                        end
-                    val messa2 =
+                    val ssa2 =
                        Control.passTypeCheck
                        {display = Control.Layouts MeSsa2.Program.layouts,
-                        name = "toMeSsa2",
+                        name = "toSsa2",
                         stats = MeSsa2.Program.layoutStats,
                         style = Control.No,
-                        suffix = "messa2",
-                        thunk = fn () => MeSsaToSsa2.convert messa,
+                        suffix = "ssa2",
+                        thunk = fn () => MeSsaToSsa2.convert ssa,
                         typeCheck = MeSsa2.typeCheck}
-                    val messa2 =
+                    val ssa2 =
                        Control.passTypeCheck
                        {display = Control.Layouts MeSsa2.Program.layouts,
-                        name = "meSsa2Simplify",
+                        name = "ssa2Simplify",
                         stats = MeSsa2.Program.layoutStats,
                         style = Control.No,
-                        suffix = "messa2",
-                        thunk = fn () => MeSsa2.simplify messa2,
+                        suffix = "ssa2",
+                        thunk = fn () => MeSsa2.simplify ssa2,
                         typeCheck = MeSsa2.typeCheck}
                     val _ =
                        let
                           open Control
                        in
                           if !keepSSA2
-                             then saveToFile ({suffix = "messa2"}, No, messa2,
+                             then saveToFile ({suffix = "ssa2"}, No, ssa2,
                                               Layouts MeSsa2.Program.layouts)
                           else ()
                        end
@@ -696,16 +696,16 @@ fun preCodegen {input: MLBString.t}: Machine.Program.t =
                            Control.CCodegen => CCodegen.implementsPrim
                          | Control.x86Codegen => x86Codegen.implementsPrim
                          | Control.amd64Codegen => amd64Codegen.implementsPrim
-                     val memachine =
+                     val machine =
                         Control.passTypeCheck
                         {display = Control.Layouts Machine.Program.layouts,
-                         name = "mebackend",
+                         name = "backend",
                          stats = fn _ => Layout.empty,
                          style = Control.No,
-                         suffix = "memachine",
+                         suffix = "machine",
                          thunk = fn () =>
                                  (MeBackend.toMachine
-                                  (messa2,
+                                  (ssa2,
                                    {codegenImplementsPrim = codegenImplementsPrim})),
                          typeCheck = fn machine =>
                                      (* For now, machine type check is too slow to run. *)
@@ -717,14 +717,14 @@ fun preCodegen {input: MLBString.t}: Machine.Program.t =
                            open Control
                         in
                            if !keepMachine
-                              then saveToFile ({suffix = "memachine"}, No, memachine,
+                              then saveToFile ({suffix = "machine"}, No, machine,
                                                Layouts Machine.Program.layouts)
                            else ()
                         end
                  in
-                    SOME memachine
+                    machine
                  end
-         else NONE
+         else let
       val ssa =
          Control.passTypeCheck
          {display = Control.Layouts Ssa.Program.layouts,
@@ -800,6 +800,9 @@ fun preCodegen {input: MLBString.t}: Machine.Program.t =
                       (if !Control.typeCheck
                           then Machine.Program.typeCheck machine
                        else ())}
+      in
+         machine
+      end
       val _ =
          let
             open Control
@@ -810,9 +813,7 @@ fun preCodegen {input: MLBString.t}: Machine.Program.t =
             else ()
          end
    in
-      case memachine of
-         SOME memachine => memachine
-      |  NONE => machine
+      machine
    end
 
 fun compile {input: MLBString.t, outputC, outputS}: unit =

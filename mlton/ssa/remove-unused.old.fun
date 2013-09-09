@@ -1,5 +1,4 @@
-(* Copyright (C) 2013 Matthew Fluet.
- * Copyright (C) 2009 Matthew Fluet.
+(* Copyright (C) 2009 Matthew Fluet.
  * Copyright (C) 1999-2008 Henry Cejtin, Matthew Fluet, Suresh
  *    Jagannathan, and Stephen Weeks.
  * Copyright (C) 1997-2000 NEC Research Institute.
@@ -8,11 +7,11 @@
  * See the file MLton-LICENSE for details.
  *)
 
-functor MeRemoveUnused2 (S: ME_SSA2_TRANSFORM_STRUCTS): ME_SSA2_TRANSFORM =
+functor RemoveUnused (S: SSA_TRANSFORM_STRUCTS): SSA_TRANSFORM =
 struct
 
 open S
-open Exp Statement Transfer
+open Exp Transfer
 
 structure Used =
    struct
@@ -88,18 +87,16 @@ structure VarInfo =
 
 structure ConInfo =
    struct
-      datatype t = T of {args: (VarInfo.t * Type.t) Prod.t,
+      datatype t = T of {args: (VarInfo.t * Type.t) vector,
                          coned: Coned.t,
                          deconed: Deconed.t,
-                         dummy: {con: Con.t, args: Type.t Prod.t,
-                                 ty: Type.t, exp: Exp.t},
-                         used: Used.t}
+                         dummy: {con: Con.t, args: Type.t vector,
+                                 exp: Exp.t}}
 
-      fun layout (T {args, coned, deconed, used, ...}) =
-         Layout.record [("args", Prod.layout (args, VarInfo.layout o #1)),
+      fun layout (T {args, coned, deconed, ...}) =
+         Layout.record [("args", Vector.layout (VarInfo.layout o #1) args),
                         ("coned", Coned.layout coned),
-                        ("deconed", Deconed.layout deconed),
-                        ("used", Used.layout used)]
+                        ("deconed", Deconed.layout deconed)]
 
       local
          fun make f (T r) = f r
@@ -108,7 +105,6 @@ structure ConInfo =
          val coned = make #coned
          val deconed = make #deconed
          val dummy = make #dummy
-         val used = make #used
       end
 
       val con = Coned.con o coned
@@ -118,24 +114,19 @@ structure ConInfo =
       val decon = Deconed.decon o deconed
       val isDeconed = Deconed.isDeconed o deconed
 
-      val use = Used.use o used
-      val isUsed = Used.isUsed o used
-      fun whenUsed (vi, th) = Used.whenUsed (used vi, th)
-
-      fun new {args: Type.t Prod.t,
-               dummy: {con: Con.t, args: Type.t Prod.t,
-                       ty: Type.t, exp: Exp.t}}: t =
-         T {args = Prod.map (args, fn ty => (VarInfo.new ty, ty)),
+      fun new {args: Type.t vector,
+               dummy: {con: Con.t, args: Type.t vector
+                       , exp: Exp.t}}: t =
+         T {args = Vector.map (args, fn ty => (VarInfo.new ty, ty)),
             coned = Coned.new (),
             deconed = Deconed.new (),
-            dummy = dummy,
-            used = Used.new ()}
+            dummy = dummy}
    end
 
 structure TyconInfo =
    struct
       datatype t = T of {cons: Con.t vector,
-                         dummy: {con: Con.t, args: Type.t Prod.t},
+                         dummy: {con: Con.t, args: Type.t vector},
                          numCons: int ref,
                          used: Used.t}
 
@@ -153,7 +144,7 @@ structure TyconInfo =
       end
 
       fun new {cons: Con.t vector,
-               dummy: {con: Con.t, args: Type.t Prod.t}}: t =
+               dummy: {con: Con.t, args: Type.t vector}}: t =
          T {cons = cons,
             dummy = dummy,
             numCons = ref ~1,
@@ -182,7 +173,8 @@ structure TypeInfo =
 
 structure FuncInfo =
    struct
-      datatype t = T of {bugLabel: Label.t option ref,
+      datatype t = T of {args: (VarInfo.t * Type.t) vector,
+                         bugLabel: Label.t option ref,
                          mayRaise: MayRaise.t,
                          mayReturn: MayReturn.t,
                          raiseLabel: Label.t option ref,
@@ -192,11 +184,15 @@ structure FuncInfo =
                          used: Used.t,
                          wrappers: Block.t list ref}
 
-      fun layout (T {mayRaise, mayReturn,
+      fun layout (T {args,
+                     mayRaise, mayReturn,
                      raises, returns,
                      used,
                      ...}) =
-         Layout.record [("mayRaise", MayRaise.layout mayRaise),
+         Layout.record [("args", Vector.layout
+                                 (Layout.tuple2 (VarInfo.layout, Type.layout))
+                                 args),
+                        ("mayRaise", MayRaise.layout mayRaise),
                         ("mayReturn", MayReturn.layout mayReturn),
                         ("raises", Option.layout
                                    (Vector.layout
@@ -212,6 +208,7 @@ structure FuncInfo =
          fun make f (T r) = f r
          fun make' f = (make f, ! o (make f))
       in
+         val args = make #args
          val mayRaise' = make #mayRaise
          val mayReturn' = make #mayReturn
          val raiseLabel = make #raiseLabel
@@ -234,11 +231,13 @@ structure FuncInfo =
 
       val use = Used.use o used
       val isUsed = Used.isUsed o used
-      (* fun whenUsed (fi, th) = Used.whenUsed (used fi, th) *)
+      fun whenUsed (fi, th) = Used.whenUsed (used fi, th)
 
-      fun new {raises: (VarInfo.t * Type.t) vector option,
+      fun new {args: (VarInfo.t * Type.t) vector,
+               raises: (VarInfo.t * Type.t) vector option,
                returns: (VarInfo.t * Type.t) vector option}: t =
-         T {bugLabel = ref NONE,
+         T {args = args,
+            bugLabel = ref NONE,
             mayRaise = MayRaise.new (),
             mayReturn = MayReturn.new (),
             raiseLabel = ref NONE,
@@ -247,33 +246,6 @@ structure FuncInfo =
             returns = returns,
             used = Used.new (),
             wrappers = ref []}
-   end
-
-structure EntryInfo =
-   struct
-      datatype t = T of {args: (VarInfo.t * Type.t) vector,
-                         used: Used.t}
-
-      fun layout (T {args, used, ...}) =
-         Layout.record [("args", Vector.layout
-                                 (Layout.tuple2 (VarInfo.layout, Type.layout))
-                                 args),
-                        ("used", Used.layout used)]
-
-      fun new {args: (VarInfo.t * Type.t) vector}: t =
-         T {args = args,
-            used = Used.new ()}
-
-      local
-         fun make f (T r) = f r
-      in
-         val args = make #args
-         val used = make #used
-      end
-
-      val use = Used.use o used
-      val isUsed = Used.isUsed o used
-      fun whenUsed (li, th) = Used.whenUsed (used li, th)
    end
 
 structure LabelInfo =
@@ -309,13 +281,13 @@ structure LabelInfo =
    end
 
 
-fun transform2 (Program.T {datatypes, globals, functions, main}) =
+fun transform (Program.T {datatypes, globals, functions, main}) =
    let
       val {get = conInfo: Con.t -> ConInfo.t,
            set = setConInfo, ...} =
          Property.getSetOnce
          (Con.plist,
-          Property.initRaise ("RemoveUnused2.conInfo", Con.layout))
+          Property.initRaise ("RemoveUnused.conInfo", Con.layout))
       fun newConInfo (con, args, dummy) =
          setConInfo (con, ConInfo.new {args = args, dummy = dummy})
 
@@ -323,7 +295,7 @@ fun transform2 (Program.T {datatypes, globals, functions, main}) =
            set = setTyconInfo, ...} =
          Property.getSetOnce
          (Tycon.plist,
-          Property.initRaise ("RemoveUnused2.tyconInfo", Tycon.layout))
+          Property.initRaise ("RemoveUnused.tyconInfo", Tycon.layout))
       fun newTyconInfo (tycon, cons, dummy) =
          setTyconInfo (tycon, TyconInfo.new {cons = cons, dummy = dummy})
 
@@ -337,7 +309,7 @@ fun transform2 (Program.T {datatypes, globals, functions, main}) =
            set = setVarInfo, ...} =
          Property.getSetOnce
          (Var.plist,
-          Property.initRaise ("RemoveUnused2.varInfo", Var.layout))
+          Property.initRaise ("RemoveUnused.varInfo", Var.layout))
       fun newVarInfo (var, ty) =
          setVarInfo (var, VarInfo.new ty)
 
@@ -345,25 +317,13 @@ fun transform2 (Program.T {datatypes, globals, functions, main}) =
            set = setLabelInfo, ...} =
          Property.getSetOnce
          (Label.plist,
-          Property.initRaise ("RemoveUnused2.labelInfo", Label.layout))
-
-      val {get = entryInfo: FuncEntry.t -> EntryInfo.t,
-           set = setEntryInfo, ...} =
-         Property.getSetOnce
-         (FuncEntry.plist,
-          Property.initRaise ("RemoveUnused2.entryInfo", FuncEntry.layout))
+          Property.initRaise ("RemoveUnused.labelInfo", Label.layout))
 
       val {get = funcInfo: Func.t -> FuncInfo.t,
            set = setFuncInfo, ...} =
          Property.getSetOnce
          (Func.plist,
-          Property.initRaise ("RemoveUnused2.funcInfo", Func.layout))
-
-
-      val usedCon = ConInfo.used o conInfo
-      val useCon = Used.use o usedCon
-      fun visitCon (con: Con.t) = useCon con
-      val whenUsedCon = fn (con, th) => ConInfo.whenUsed (conInfo con, th)
+          Property.initRaise ("RemoveUnused.funcInfo", Func.layout))
 
       val usedTycon = TyconInfo.used o tyconInfo
       val useTycon = Used.use o usedTycon
@@ -380,21 +340,13 @@ fun transform2 (Program.T {datatypes, globals, functions, main}) =
             else let
                     val  () = used := true
                     datatype z = datatype Type.dest
-                    datatype z = datatype ObjectCon.t
                     val () =
                        case Type.dest ty of
-                          Datatype tycon => visitTycon tycon
-                        | Object {args, con} =>
-                             let
-                                val () = Prod.foreach (args, visitType)
-                                val () =
-                                   case con of
-                                      Con con => visitCon con
-                                    | Tuple => ()
-                                    | Vector => ()
-                             in
-                                ()
-                             end
+                          Array ty => visitType ty
+                        | Datatype tycon => visitTycon tycon
+                        | Ref ty => visitType ty
+                        | Tuple tys => Vector.foreach (tys, visitType)
+                        | Vector ty => visitType ty
                         | Weak ty => visitType ty
                         | _ => ()
                  in
@@ -425,8 +377,6 @@ fun transform2 (Program.T {datatypes, globals, functions, main}) =
       val visitLabelInfoTh = fn li => fn () => visitLabelInfo li
       val visitLabel = visitLabelInfo o labelInfo
       val visitLabelTh = fn l => fn () => visitLabel l
-      val visitEntryInfo = EntryInfo.use
-      val visitEntry = visitEntryInfo o entryInfo
       val visitFuncInfo = FuncInfo.use
       val visitFunc = visitFuncInfo o funcInfo
 
@@ -434,34 +384,19 @@ fun transform2 (Program.T {datatypes, globals, functions, main}) =
       fun visitVars (xs: Var.t Vector.t) = Vector.foreach (xs, visitVar)
       fun visitExp (e: Exp.t) =
          case e of
-            Const _ => ()
-          | Inject {sum, variant} =>
-               (visitTycon sum
-                ; visitVar variant)
-          | Object {args, con} =>
+            ConApp {con, args} =>
                let
-                  val () =
-                     case con of
-                        NONE => visitVars args
-                      | SOME con =>
-                           let
-                              val ci = conInfo con
-                              val () = ConInfo.con ci
-                              val ciArgs =
-                                 Vector.map
-                                 (Prod.dest (ConInfo.args ci), #elt)
-                              val () = flowVarInfoTysVars (ciArgs, args)
-                           in
-                              ()
-                           end
+                  val ci = conInfo con
+                  val () = ConInfo.con ci
+                  val () = flowVarInfoTysVars (ConInfo.args ci, args)
                in
                   ()
                end
+          | Const _ => ()
           | PrimApp {prim, args, ...} =>
                let
                   val () = visitVars args
                   datatype z = datatype Type.dest
-                  datatype z = datatype ObjectCon.t
                   fun deconType (ty: Type.t) =
                      let
                         val ti = typeInfo ty
@@ -477,22 +412,8 @@ fun transform2 (Program.T {datatypes, globals, functions, main}) =
                                          Vector.foreach
                                          (TyconInfo.cons (tyconInfo t),
                                           fn con => deconCon con)
-                                    | Object {args, con} =>
-                                         let
-                                            fun default () =
-                                               Vector.foreach
-                                               (Prod.dest args, fn {elt, isMutable} =>
-                                                if isMutable
-                                                   then ()
-                                                else deconType elt)
-                                            val () =
-                                               case con of
-                                                  Con con => deconCon con
-                                                | Tuple => default ()
-                                                | Vector => default ()
-                                         in
-                                            ()
-                                         end
+                                    | Tuple ts => Vector.foreach (ts, deconType)
+                                    | Vector t => deconType t
                                     | _ => ()
                              in
                                 ()
@@ -504,9 +425,9 @@ fun transform2 (Program.T {datatypes, globals, functions, main}) =
                         val () = ConInfo.decon ci
                         val () =
                            Vector.foreach
-                           (Prod.dest (ConInfo.args ci), fn {elt = (x, t), isMutable} =>
+                           (ConInfo.args ci, fn (x, t) =>
                             (VarInfo.use x
-                             ; if isMutable then () else deconType t))
+                             ; deconType t))
                      in
                         ()
                      end
@@ -533,88 +454,20 @@ fun transform2 (Program.T {datatypes, globals, functions, main}) =
                in
                   ()
                end
-          | Select {base, offset} =>
-               let
-                  datatype z = datatype Base.t
-                  datatype z = datatype ObjectCon.t
-               in
-                  case base of
-                     Object base =>
-                        let
-                           val () = visitVar base
-                           val () =
-                              case Type.dest (tyVar base) of
-                                 Type.Object {con, ...} =>
-                                    (case con of
-                                        Con con =>
-                                           let
-                                              val ci = conInfo con
-                                              val ciArgs = ConInfo.args ci
-                                              val {elt = (vi, _), ...} =
-                                                 Prod.sub (ciArgs, offset)
-
-                                              val () = ConInfo.decon ci
-                                              val () = VarInfo.use vi
-                                           in
-                                              ()
-                                           end
-                                      | Tuple => ()
-                                      | Vector => Error.bug "RemoveUnused2.visitExp: Select:non-Con|Tuple")
-                               | _ => Error.bug "RemovUnused2.visitExp: Select:non-Object"
-                        in
-                           ()
-                        end
-                   | VectorSub {index, vector} =>
-                        (visitVar index
-                         ; visitVar vector)
-               end
+          | Profile _ => ()
+          | Select {tuple, ...} => visitVar tuple
+          | Tuple xs => visitVars xs
           | Var x => visitVar x
       val visitExpTh = fn e => fn () => visitExp e
       fun maybeVisitVarExp (var, exp) =
          Option.app (var, fn var =>
                      VarInfo.whenUsed (varInfo var, visitExpTh exp))
-      fun visitStatement s =
-         case s of
-            Bind {exp, ty, var} =>
-               (Option.app (var, fn var => newVarInfo (var, ty))
-                ; if Exp.maySideEffect exp
-                     then (visitType ty
-                           ; visitExp exp)
-                  else maybeVisitVarExp (var, exp))
-          | Profile _ => ()
-          | Update {base, offset, value} =>
-               let
-                  datatype z = datatype Base.t
-                  datatype z = datatype ObjectCon.t
-               in
-                  case base of
-                     Object base =>
-                        (case Type.dest (tyVar base) of
-                            Type.Object {con, ...} =>
-                               (case con of
-                                   Con con =>
-                                      let
-                                         val ci = conInfo con
-                                         val ciArgs = ConInfo.args ci
-                                         val {elt = (vi, _), ...} =
-                                            Prod.sub (ciArgs, offset)
-                                      in
-                                         VarInfo.whenUsed
-                                         (vi, fn () =>
-                                          (ConInfo.decon ci
-                                           ; visitVar base
-                                           ; visitVar value))
-                                      end
-                                 | Tuple =>
-                                      (visitVar base
-                                       ; visitVar value)
-                                 | Vector => Error.bug "RemoveUnused2.visitStatement: Update:non-Con|Tuple")
-                          | _ => Error.bug "RemoveUnused2.visitStatement: Update:non-Object")
-                   | VectorSub {index, vector} =>
-                        (visitVar index
-                         ; visitVar vector
-                         ; visitVar value)
-               end
+      fun visitStatement (Statement.T {exp, var, ty, ...}) =
+         (Option.app (var, fn var => newVarInfo (var, ty))
+          ; if Exp.maySideEffect exp
+               then (visitType ty
+                     ; visitExp exp)
+            else maybeVisitVarExp (var, exp))
       fun visitTransfer (t: Transfer.t, fi: FuncInfo.t) =
          case t of
             Arith {args, overflow, success, ty, ...} =>
@@ -623,7 +476,7 @@ fun transform2 (Program.T {datatypes, globals, functions, main}) =
                 ; visitLabel success
                 ; visitType ty)
           | Bug => ()
-          | Call {func, entry, args, return} =>
+          | Call {args, func, return} =>
                let
                   datatype u = None
                              | Caller
@@ -639,8 +492,7 @@ fun transform2 (Program.T {datatypes, globals, functions, main}) =
                              | Handler.Handle h => Some h)
                       | Return.Tail => (Caller, Caller)
                   val fi' = funcInfo func
-                  val ei' = entryInfo entry
-                  val () = flowVarInfoTysVars (EntryInfo.args ei', args)
+                  val () = flowVarInfoTysVars (FuncInfo.args fi', args)
                   val () =
                      case cont of
                         None => ()
@@ -699,7 +551,6 @@ fun transform2 (Program.T {datatypes, globals, functions, main}) =
                               ()
                            end
                   val () = visitFuncInfo fi'
-                  val () = visitEntryInfo ei'
                in
                   ()
                end
@@ -721,7 +572,11 @@ fun transform2 (Program.T {datatypes, globals, functions, main}) =
                                     let
                                        val ci = conInfo con
                                        val () = ConInfo.decon ci
+                                       val li = labelInfo l
                                        val () =
+                                          flowVarInfoTysVarInfoTys
+                                          (LabelInfo.args li, ConInfo.args ci)
+                                       val ()  =
                                           ConInfo.whenConed
                                           (ci, visitLabelTh l)
                                     in
@@ -730,7 +585,7 @@ fun transform2 (Program.T {datatypes, globals, functions, main}) =
                                 val tycon =
                                    case Type.dest (tyVar test) of
                                       Type.Datatype tycon => tycon
-                                    | _ => Error.bug "RemoveUnused2.visitTransfer: Case:non-Datatype"
+                                    | _ => Error.bug "RemoveUnused.visitTransfer: Case:non-Datatype"
                                 val cons = TyconInfo.cons (tyconInfo tycon)
                              in
                                 case default of
@@ -774,21 +629,18 @@ fun transform2 (Program.T {datatypes, globals, functions, main}) =
          (datatypes, fn Datatype.T {tycon, cons} =>
           let
              val dummyCon = Con.newString "dummy"
-             val dummyArgs = Prod.empty ()
+             val dummyArgs = Vector.new0 ()
              val dummy = {con = dummyCon, args = dummyArgs}
              val () =
                 newTyconInfo
                 (tycon, Vector.map (cons, fn {con, ...} => con), dummy)
-             val dummyTy = Type.conApp (dummyCon, dummyArgs)
-             val dummyExp = Object {args = Vector.new0 (),
-                                    con = SOME dummyCon}
-             val dummy = {con = dummyCon, args = dummyArgs,
-                          ty = dummyTy, exp = dummyExp}
+             val dummyExp = ConApp {args = Vector.new0 (),
+                                    con = dummyCon}
+             val dummy = {con = dummyCon, args = dummyArgs, exp = dummyExp}
              val () =
                 Vector.foreach
                 (cons, fn {con, args} =>
-                 (newConInfo (con, args, dummy)
-                  ; whenUsedCon (con, fn () => useTycon tycon)))
+                 newConInfo (con, args, dummy))
           in
              ()
           end)
@@ -798,8 +650,7 @@ fun transform2 (Program.T {datatypes, globals, functions, main}) =
                let
                   val ci = conInfo c
                in
-                  ConInfo.use ci
-                  ; ConInfo.con ci
+                  ConInfo.con ci
                   ; ConInfo.decon ci
                end
          in
@@ -813,33 +664,25 @@ fun transform2 (Program.T {datatypes, globals, functions, main}) =
          List.foreach
          (functions, fn function =>
           let
-             val {name, entries, raises, returns, blocks, ...} =
+             val {name, args, raises, returns, start, blocks, ...} =
                 Function.dest function
-
-             fun doitVarTys vts =
-                Vector.map (vts, fn (x, t) => (varInfo x, t))
-             fun doitTys ts =
-                Vector.map (ts, fn t => (VarInfo.new t, t))
-             fun doitTys' ts =
-                Option.map (ts, doitTys)
-
-             val fi =
-                FuncInfo.new
-                {raises = doitTys' raises,
-                 returns = doitTys' returns}
+             val () = Vector.foreach (args, newVarInfo)
+             local
+                fun doitVarTys vts =
+                   Vector.map (vts, fn (x, t) => (varInfo x, t))
+                fun doitTys ts =
+                   Vector.map (ts, fn t => (VarInfo.new t, t))
+                fun doitTys' ts =
+                   Option.map (ts, doitTys)
+             in
+                val fi =
+                   FuncInfo.new
+                   {args = doitVarTys args,
+                    raises = doitTys' raises,
+                    returns = doitTys' returns}
+             end
              val () = setFuncInfo (name, fi)
-             val () =
-                Vector.foreach
-                (entries, fn FunctionEntry.T {name, args, start, ...} =>
-                 let
-                    val () = Vector.foreach (args, newVarInfo)
-                    val ei =
-                       EntryInfo.new
-                       {args = doitVarTys args}
-                 in
-                    setEntryInfo (name, ei)
-                    ; EntryInfo.whenUsed (ei, visitLabelTh start)
-                 end)
+             val () = FuncInfo.whenUsed (fi, visitLabelTh start)
              val () =
                 Vector.foreach
                 (blocks, fn block as Block.T {label, args, ...} =>
@@ -862,8 +705,7 @@ fun transform2 (Program.T {datatypes, globals, functions, main}) =
           in
              ()
           end)
-      val () = visitFunc (#func main)
-      val () = visitEntry (#entry main)
+      val () = visitFunc main
 
       (* Diagnostics *)
       val () =
@@ -887,16 +729,11 @@ fun transform2 (Program.T {datatypes, globals, functions, main}) =
              List.foreach
              (functions, fn f =>
               let
-                 val {name, entries, blocks, ...} = Function.dest f
+                 val {name, blocks, ...} = Function.dest f
               in
                  display (seq [Func.layout name,
                                str ": ",
                                FuncInfo.layout (funcInfo name)]);
-                 Vector.foreach
-                 (entries, fn FunctionEntry.T {name, ...} =>
-                  display (seq [FuncEntry.layout name,
-                                str ": ",
-                                EntryInfo.layout (entryInfo name)]));
                  Vector.foreach
                  (blocks, fn Block.T {label, ...} =>
                   display (seq [Label.layout label,
@@ -967,6 +804,7 @@ fun transform2 (Program.T {datatypes, globals, functions, main}) =
                        | SOME (_, l') => l'
                  end
          end
+      val getConWrapperLabel = getWrapperLabel
       val getContWrapperLabel = getWrapperLabel
       val getHandlerWrapperLabel = getWrapperLabel
       fun getOriginalWrapperLabel l =
@@ -1066,34 +904,12 @@ fun transform2 (Program.T {datatypes, globals, functions, main}) =
             case !simplify of
                NONE => let
                           datatype z = datatype Type.dest
-                          datatype z = datatype ObjectCon.t
                           val ty =
                              case Type.dest ty of
-                                Object {args, con} =>
-                                   (case con of
-                                       Con con =>
-                                          let
-                                             val ci = conInfo con
-                                          in
-                                             case (ConInfo.isConed ci,
-                                                   ConInfo.isDeconed ci) of
-                                                (false, _) =>
-                                                   #ty (ConInfo.dummy ci)
-                                              | (true, true) =>
-                                                   Type.object
-                                                   {args = Prod.keepAllMap
-                                                           (ConInfo.args ci, fn (x,t) =>
-                                                            if VarInfo.isUsed x
-                                                               then SOME (simplifyType t)
-                                                            else NONE),
-                                                    con = Con con}
-                                              | (true, false) =>
-                                                   #ty (ConInfo.dummy ci)
-                                          end
-                                     | _ =>
-                                          Type.object
-                                          {args = Prod.map (args, simplifyType),
-                                           con = con})
+                                Array ty => Type.array (simplifyType ty)
+                              | Ref ty => Type.reff (simplifyType ty)
+                              | Tuple tys => Type.tuple (Vector.map (tys, simplifyType))
+                              | Vector ty => Type.vector (simplifyType ty)
                               | Weak ty => Type.weak (simplifyType ty)
                               | _ => ty
                        in
@@ -1125,17 +941,14 @@ fun transform2 (Program.T {datatypes, globals, functions, main}) =
                          in
                             case (ConInfo.isConed ci,
                                   ConInfo.isDeconed ci) of
-                               (false, _) =>
-                                  if ConInfo.isUsed ci
-                                     then addDummy ()
-                                  else NONE
+                               (false, _) => NONE
                              | (true, true) =>
-                                  SOME {con = con,
-                                        args = Prod.keepAllMap
-                                        (ConInfo.args ci, fn (x, ty) =>
-                                         if VarInfo.isUsed x
-                                            then SOME (simplifyType ty)
-                                         else NONE)}
+                                  SOME {args = Vector.keepAllMap
+                                               (ConInfo.args ci, fn (x, ty) =>
+                                                if VarInfo.isUsed x
+                                                   then SOME (simplifyType ty)
+                                                else NONE),
+                                        con = con}
                              | (true, false) =>
                                   addDummy ()
                          end)
@@ -1148,133 +961,52 @@ fun transform2 (Program.T {datatypes, globals, functions, main}) =
 
       fun simplifyExp (e: Exp.t): Exp.t =
          case e of
-            Object {con, args} =>
-               (case con of
-                   NONE => e
-                 | SOME con =>
-                      let
-                         val ci = conInfo con
-                      in
-                         if ConInfo.isDeconed ci
-                            then let
-                                    val ciArgs =
-                                       Vector.map
-                                       (Prod.dest (ConInfo.args ci), #elt)
-                                 in
-                                    Object {con = SOME con,
-                                            args = (Vector.keepAllMap2
-                                                    (args, ciArgs,
-                                                     fn (x, (y, _)) =>
-                                                     if VarInfo.isUsed y
-                                                        then SOME x
-                                                     else NONE))}
-                                 end
-                         else #exp (ConInfo.dummy ci)
-                      end)
-          | Select {base, offset} =>
+            ConApp {con, args} =>
                let
-                  datatype z = datatype Base.t
+                  val ci = conInfo con
                in
-                  case base of
-                     Object base =>
-                        let
-                           datatype z = datatype ObjectCon.t
-                           datatype z = datatype Type.dest
-                        in
-                           case Type.dest (tyVar base) of
-                              Object {con, ...} =>
-                                 (case con of
-                                     Con con =>
-                                        let
-                                           val ci = conInfo con
-                                           val ciArgs = ConInfo.args ci
-                                           val offset =
-                                              Int.fold
-                                              (0, offset, 0, fn (i, offset) =>
-                                               if (VarInfo.isUsed o #1 o #elt)
-                                                  (Prod.sub (ciArgs, i))
-                                                  then offset + 1
-                                               else offset)
-                                        in
-                                           Select {base = Base.Object base,
-                                                   offset = offset}
-                                        end
-                                   | Tuple => e
-                                   | Vector => Error.bug "RemoveUnused2.simplifyExp: Update:non-Con|Tuple")
-                            | _ => Error.bug "RemoveUnused2.simplifyExp:Select:non-Object"
-                        end
-                   | _ => e
+                  if ConInfo.isDeconed ci
+                     then let
+                             val ciArgs =
+                                ConInfo.args ci
+                          in
+                             ConApp {args = (Vector.keepAllMap2
+                                             (args, ciArgs,
+                                              fn (x, (y, _)) =>
+                                              if VarInfo.isUsed y
+                                                 then SOME x
+                                              else NONE)),
+                                     con = con}
+                          end
+                  else #exp (ConInfo.dummy ci)
                end
+          | PrimApp {prim, targs, args} =>
+               PrimApp {prim = prim,
+                        targs = Vector.map (targs, simplifyType),
+                        args = args}
           | _ => e
-      fun simplifyStatement (s : Statement.t) : Statement.t option =
-         case s of
-            Bind {exp, ty, var} =>
-               let
-                  fun doit' var =
-                     SOME (Statement.Bind
-                           {var = var,
-                            ty = simplifyType ty,
-                            exp = simplifyExp exp})
-                  fun doit var' =
-                     if Exp.maySideEffect exp
-                        then doit' var
-                     else if isSome var'
-                             then doit' var'
-                          else NONE
-               in
-                  case var of
-                     SOME var => if isUsedVar var
-                                    then doit (SOME var)
-                                 else doit NONE
-                   | NONE => doit NONE
-               end
-          | Profile _ => SOME s
-          | Update {base, offset, value} =>
-               let
-                  datatype z = datatype Base.t
-               in
-                  case base of
-                     Object base =>
-                        let
-                           datatype z = datatype ObjectCon.t
-                           datatype z = datatype Type.dest
-                        in
-                           case Type.dest (tyVar base) of
-                              Object {con, ...} =>
-                                 (case con of
-                                     Con con =>
-                                        let
-                                           val ci = conInfo con
-                                           val ciArgs = ConInfo.args ci
-                                           fun argIsUsed i =
-                                              VarInfo.isUsed
-                                              (#1 (#elt (Prod.sub (ciArgs, i))))
-                                        in
-                                           if argIsUsed offset
-                                              then
-                                                 let
-                                                    val offset =
-                                                       Int.fold
-                                                       (0, offset, 0,
-                                                        fn (i, offset) =>
-                                                        if argIsUsed i
-                                                           then offset + 1
-                                                        else offset)
-                                                 in
-                                                    SOME
-                                                    (Update
-                                                     {base = Base.Object base,
-                                                      offset = offset,
-                                                      value = value})
-                                                 end
-                                           else NONE
-                                        end
-                                   | Tuple => SOME s
-                                   | Vector => Error.bug "RemoveUnused2.simplifyStatement: Update:non-Con|Tuple")
-                            | _ => Error.bug "RemoveUnused2.simplifyStatement: Select:non-Object"
-                        end
-                   | _ => SOME s
-               end
+      fun simplifyStatement (s as Statement.T {var, ty, exp}) : Statement.t option =
+         case exp of
+            Profile _ => SOME s
+          | _ => let
+                    fun doit' var =
+                       SOME (Statement.T
+                             {var = var,
+                              ty = simplifyType ty,
+                              exp = simplifyExp exp})
+                    fun doit var' =
+                       if Exp.maySideEffect exp
+                          then doit' var
+                       else if isSome var'
+                               then doit' var'
+                            else NONE
+                 in
+                    case var of
+                       SOME var => if isUsedVar var
+                                      then doit (SOME var)
+                                   else doit NONE
+                     | NONE => doit NONE
+                 end
       fun simplifyStatements (ss: Statement.t Vector.t) : Statement.t Vector.t =
          Vector.keepAllMap (ss, simplifyStatement)
       fun simplifyTransfer (t: Transfer.t, fi: FuncInfo.t): Transfer.t =
@@ -1286,10 +1018,9 @@ fun transform2 (Program.T {datatypes, globals, functions, main}) =
                       success = getArithSuccessWrapperLabel success,
                       ty = simplifyType ty}
           | Bug => Bug
-          | Call {func, entry, args, return} =>
+          | Call {func, args, return} =>
                let
                   val fi' = funcInfo func
-                  val ei' = entryInfo entry
                   datatype u = None
                              | Caller
                              | Some of Label.t
@@ -1307,7 +1038,7 @@ fun transform2 (Program.T {datatypes, globals, functions, main}) =
                      if FuncInfo.mayReturn fi'
                         then case cont of
                                 None =>
-                                   Error.bug "RemoveUnused2.simplifyTransfer: cont:None"
+                                   Error.bug "RemoveUnused.simplifyTransfer: cont:None"
                               | Caller =>
                                    (if (case (FuncInfo.returns fi,
                                               FuncInfo.returns fi') of
@@ -1315,7 +1046,7 @@ fun transform2 (Program.T {datatypes, globals, functions, main}) =
                                               Vector.forall2
                                               (xts, yts, fn ((x, _), (y, _)) =>
                                                VarInfo.isUsed x = VarInfo.isUsed y)
-                                         | _ => Error.bug "RemoveUnused2.simplifyTransfer: cont:Caller")
+                                         | _ => Error.bug "RemoveUnused.simplifyTransfer: cont:Caller")
                                        then Caller
                                     else Some (getReturnContFunc
                                                (fi, valOf (FuncInfo.returns fi'))))
@@ -1327,7 +1058,7 @@ fun transform2 (Program.T {datatypes, globals, functions, main}) =
                      if FuncInfo.mayRaise fi'
                         then (case handler of
                                  None =>
-                                    Error.bug "RemoveUnused2.simplifyTransfer: handler:None"
+                                    Error.bug "RemoveUnused.simplifyTransfer: handler:None"
                                | Caller =>
                                     (if (case (FuncInfo.raises fi,
                                                FuncInfo.raises fi') of
@@ -1335,7 +1066,7 @@ fun transform2 (Program.T {datatypes, globals, functions, main}) =
                                                Vector.forall2
                                                (xts, yts, fn ((x, _), (y, _)) =>
                                                 VarInfo.isUsed x = VarInfo.isUsed y)
-                                          | _ => Error.bug "RemoveUnused2.simplifyTransfer: handler:Caller")
+                                          | _ => Error.bug "RemoveUnused.simplifyTransfer: handler:Caller")
                                         then Caller
                                      else Some (getRaiseHandlerFunc
                                                 (fi, valOf (FuncInfo.raises fi'))))
@@ -1373,13 +1104,12 @@ fun transform2 (Program.T {datatypes, globals, functions, main}) =
 
                   val args =
                      Vector.keepAllMap2
-                     (args, EntryInfo.args ei', fn (x, (y, _)) =>
+                     (args, FuncInfo.args fi', fn (x, (y, _)) =>
                       if VarInfo.isUsed y
                          then SOME x
                       else NONE)
                in
                   Call {func = func,
-                        entry = entry,
                         args = args,
                         return = return}
                end
@@ -1392,7 +1122,7 @@ fun transform2 (Program.T {datatypes, globals, functions, main}) =
                          val ci = conInfo con
                       in
                          if ConInfo.isConed ci
-                            then SOME (con, l)
+                            then SOME (con, getConWrapperLabel (l, ConInfo.args ci))
                          else NONE
                       end)
                   fun keep default = Case {test = test,
@@ -1410,7 +1140,7 @@ fun transform2 (Program.T {datatypes, globals, functions, main}) =
                                        val tycon =
                                           case Type.dest (tyVar test) of
                                              Type.Datatype tycon => tycon
-                                           | _ => Error.bug "RemoveUnused2.simplifyTransfer: Case:non-Datatype"
+                                           | _ => Error.bug "RemoveUnused.simplifyTransfer: Case:non-Datatype"
                                        val numCons = TyconInfo.numCons (tyconInfo tycon)
                                     in
                                        if Vector.length cases = numCons
@@ -1447,7 +1177,7 @@ fun transform2 (Program.T {datatypes, globals, functions, main}) =
                         return = getRuntimeWrapperLabel return}
       val simplifyTransfer =
          Trace.trace
-         ("RemoveUnused2.simplifyTransfer",
+         ("RemoveUnused.simplifyTransfer",
           Layout.tuple2 (Transfer.layout, FuncInfo.layout), Transfer.layout)
          simplifyTransfer
       fun simplifyBlock (Block.T {label, args, statements, transfer}): Block.t option =
@@ -1479,33 +1209,17 @@ fun transform2 (Program.T {datatypes, globals, functions, main}) =
       val shrink = shrinkFunction {globals = globals}
       fun simplifyFunction (f: Function.t): Function.t option =
          let
-            val {entries, blocks, mayInline, name, ...} = Function.dest f
+            val {args, blocks, mayInline, name, start, ...} = Function.dest f
             val fi = funcInfo name
          in
             if FuncInfo.isUsed fi
                then let
-                       val entries =
-                          Vector.keepAllMap
-                          (entries, fn entry =>
-                           let
-                              val FunctionEntry.T {name, args, start} = entry
-                              val ei = entryInfo name
-                           in
-                              if EntryInfo.isUsed ei
-                                 then let
-                                         val args =
-                                            Vector.keepAllMap2
-                                            (EntryInfo.args ei, args, fn ((vi, _), (x, ty)) =>
-                                             if VarInfo.isUsed vi
-                                                then SOME (x, simplifyType ty)
-                                             else NONE)
-                                      in
-                                         SOME (FunctionEntry.T {name = name,
-                                                                args = args,
-                                                                start = start})
-                                      end
-                              else NONE
-                           end)
+                       val args =
+                          Vector.keepAllMap2
+                          (FuncInfo.args fi, args, fn ((vi, _), (x, ty)) =>
+                           if VarInfo.isUsed vi
+                              then SOME (x, simplifyType ty)
+                           else NONE)
                        val blocks = simplifyBlocks blocks
                        val wrappers = Vector.fromList (FuncInfo.wrappers fi)
                        val blocks = Vector.concat [wrappers, blocks]
@@ -1532,12 +1246,13 @@ fun transform2 (Program.T {datatypes, globals, functions, main}) =
                                                else NONE))
                                 else NONE
                     in
-                       SOME (shrink (Function.new {entries = entries,
+                       SOME (shrink (Function.new {args = args,
                                                    blocks = blocks,
                                                    mayInline = mayInline,
                                                    name = name,
                                                    raises = raises,
-                                                   returns = returns}))
+                                                   returns = returns,
+                                                   start = start}))
                     end
             else NONE
          end

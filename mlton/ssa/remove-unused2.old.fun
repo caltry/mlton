@@ -1,5 +1,4 @@
-(* Copyright (C) 2013 Matthew Fluet.
- * Copyright (C) 2009 Matthew Fluet.
+(* Copyright (C) 2009 Matthew Fluet.
  * Copyright (C) 1999-2008 Henry Cejtin, Matthew Fluet, Suresh
  *    Jagannathan, and Stephen Weeks.
  * Copyright (C) 1997-2000 NEC Research Institute.
@@ -8,7 +7,7 @@
  * See the file MLton-LICENSE for details.
  *)
 
-functor MeRemoveUnused2 (S: ME_SSA2_TRANSFORM_STRUCTS): ME_SSA2_TRANSFORM =
+functor RemoveUnused2 (S: SSA2_TRANSFORM_STRUCTS): SSA2_TRANSFORM =
 struct
 
 open S
@@ -182,7 +181,8 @@ structure TypeInfo =
 
 structure FuncInfo =
    struct
-      datatype t = T of {bugLabel: Label.t option ref,
+      datatype t = T of {args: (VarInfo.t * Type.t) vector,
+                         bugLabel: Label.t option ref,
                          mayRaise: MayRaise.t,
                          mayReturn: MayReturn.t,
                          raiseLabel: Label.t option ref,
@@ -192,11 +192,15 @@ structure FuncInfo =
                          used: Used.t,
                          wrappers: Block.t list ref}
 
-      fun layout (T {mayRaise, mayReturn,
+      fun layout (T {args,
+                     mayRaise, mayReturn,
                      raises, returns,
                      used,
                      ...}) =
-         Layout.record [("mayRaise", MayRaise.layout mayRaise),
+         Layout.record [("args", Vector.layout
+                                 (Layout.tuple2 (VarInfo.layout, Type.layout))
+                                 args),
+                        ("mayRaise", MayRaise.layout mayRaise),
                         ("mayReturn", MayReturn.layout mayReturn),
                         ("raises", Option.layout
                                    (Vector.layout
@@ -212,6 +216,7 @@ structure FuncInfo =
          fun make f (T r) = f r
          fun make' f = (make f, ! o (make f))
       in
+         val args = make #args
          val mayRaise' = make #mayRaise
          val mayReturn' = make #mayReturn
          val raiseLabel = make #raiseLabel
@@ -234,11 +239,13 @@ structure FuncInfo =
 
       val use = Used.use o used
       val isUsed = Used.isUsed o used
-      (* fun whenUsed (fi, th) = Used.whenUsed (used fi, th) *)
+      fun whenUsed (fi, th) = Used.whenUsed (used fi, th)
 
-      fun new {raises: (VarInfo.t * Type.t) vector option,
+      fun new {args: (VarInfo.t * Type.t) vector,
+               raises: (VarInfo.t * Type.t) vector option,
                returns: (VarInfo.t * Type.t) vector option}: t =
-         T {bugLabel = ref NONE,
+         T {args = args,
+            bugLabel = ref NONE,
             mayRaise = MayRaise.new (),
             mayReturn = MayReturn.new (),
             raiseLabel = ref NONE,
@@ -247,33 +254,6 @@ structure FuncInfo =
             returns = returns,
             used = Used.new (),
             wrappers = ref []}
-   end
-
-structure EntryInfo =
-   struct
-      datatype t = T of {args: (VarInfo.t * Type.t) vector,
-                         used: Used.t}
-
-      fun layout (T {args, used, ...}) =
-         Layout.record [("args", Vector.layout
-                                 (Layout.tuple2 (VarInfo.layout, Type.layout))
-                                 args),
-                        ("used", Used.layout used)]
-
-      fun new {args: (VarInfo.t * Type.t) vector}: t =
-         T {args = args,
-            used = Used.new ()}
-
-      local
-         fun make f (T r) = f r
-      in
-         val args = make #args
-         val used = make #used
-      end
-
-      val use = Used.use o used
-      val isUsed = Used.isUsed o used
-      fun whenUsed (li, th) = Used.whenUsed (used li, th)
    end
 
 structure LabelInfo =
@@ -347,12 +327,6 @@ fun transform2 (Program.T {datatypes, globals, functions, main}) =
          (Label.plist,
           Property.initRaise ("RemoveUnused2.labelInfo", Label.layout))
 
-      val {get = entryInfo: FuncEntry.t -> EntryInfo.t,
-           set = setEntryInfo, ...} =
-         Property.getSetOnce
-         (FuncEntry.plist,
-          Property.initRaise ("RemoveUnused2.entryInfo", FuncEntry.layout))
-
       val {get = funcInfo: Func.t -> FuncInfo.t,
            set = setFuncInfo, ...} =
          Property.getSetOnce
@@ -425,8 +399,6 @@ fun transform2 (Program.T {datatypes, globals, functions, main}) =
       val visitLabelInfoTh = fn li => fn () => visitLabelInfo li
       val visitLabel = visitLabelInfo o labelInfo
       val visitLabelTh = fn l => fn () => visitLabel l
-      val visitEntryInfo = EntryInfo.use
-      val visitEntry = visitEntryInfo o entryInfo
       val visitFuncInfo = FuncInfo.use
       val visitFunc = visitFuncInfo o funcInfo
 
@@ -623,7 +595,7 @@ fun transform2 (Program.T {datatypes, globals, functions, main}) =
                 ; visitLabel success
                 ; visitType ty)
           | Bug => ()
-          | Call {func, entry, args, return} =>
+          | Call {args, func, return} =>
                let
                   datatype u = None
                              | Caller
@@ -639,8 +611,8 @@ fun transform2 (Program.T {datatypes, globals, functions, main}) =
                              | Handler.Handle h => Some h)
                       | Return.Tail => (Caller, Caller)
                   val fi' = funcInfo func
-                  val ei' = entryInfo entry
-                  val () = flowVarInfoTysVars (EntryInfo.args ei', args)
+
+                  val () = flowVarInfoTysVars (FuncInfo.args fi', args)
                   val () =
                      case cont of
                         None => ()
@@ -699,7 +671,6 @@ fun transform2 (Program.T {datatypes, globals, functions, main}) =
                               ()
                            end
                   val () = visitFuncInfo fi'
-                  val () = visitEntryInfo ei'
                in
                   ()
                end
@@ -813,33 +784,25 @@ fun transform2 (Program.T {datatypes, globals, functions, main}) =
          List.foreach
          (functions, fn function =>
           let
-             val {name, entries, raises, returns, blocks, ...} =
+             val {name, args, raises, returns, start, blocks, ...} =
                 Function.dest function
-
-             fun doitVarTys vts =
-                Vector.map (vts, fn (x, t) => (varInfo x, t))
-             fun doitTys ts =
-                Vector.map (ts, fn t => (VarInfo.new t, t))
-             fun doitTys' ts =
-                Option.map (ts, doitTys)
-
-             val fi =
-                FuncInfo.new
-                {raises = doitTys' raises,
-                 returns = doitTys' returns}
+             val () = Vector.foreach (args, newVarInfo)
+             local
+                fun doitVarTys vts =
+                   Vector.map (vts, fn (x, t) => (varInfo x, t))
+                fun doitTys ts =
+                   Vector.map (ts, fn t => (VarInfo.new t, t))
+                fun doitTys' ts =
+                   Option.map (ts, doitTys)
+             in
+                val fi =
+                   FuncInfo.new
+                   {args = doitVarTys args,
+                    raises = doitTys' raises,
+                    returns = doitTys' returns}
+             end
              val () = setFuncInfo (name, fi)
-             val () =
-                Vector.foreach
-                (entries, fn FunctionEntry.T {name, args, start, ...} =>
-                 let
-                    val () = Vector.foreach (args, newVarInfo)
-                    val ei =
-                       EntryInfo.new
-                       {args = doitVarTys args}
-                 in
-                    setEntryInfo (name, ei)
-                    ; EntryInfo.whenUsed (ei, visitLabelTh start)
-                 end)
+             val () = FuncInfo.whenUsed (fi, visitLabelTh start)
              val () =
                 Vector.foreach
                 (blocks, fn block as Block.T {label, args, ...} =>
@@ -862,8 +825,7 @@ fun transform2 (Program.T {datatypes, globals, functions, main}) =
           in
              ()
           end)
-      val () = visitFunc (#func main)
-      val () = visitEntry (#entry main)
+      val () = visitFunc main
 
       (* Diagnostics *)
       val () =
@@ -887,16 +849,11 @@ fun transform2 (Program.T {datatypes, globals, functions, main}) =
              List.foreach
              (functions, fn f =>
               let
-                 val {name, entries, blocks, ...} = Function.dest f
+                 val {name, blocks, ...} = Function.dest f
               in
                  display (seq [Func.layout name,
                                str ": ",
                                FuncInfo.layout (funcInfo name)]);
-                 Vector.foreach
-                 (entries, fn FunctionEntry.T {name, ...} =>
-                  display (seq [FuncEntry.layout name,
-                                str ": ",
-                                EntryInfo.layout (entryInfo name)]));
                  Vector.foreach
                  (blocks, fn Block.T {label, ...} =>
                   display (seq [Label.layout label,
@@ -1286,10 +1243,9 @@ fun transform2 (Program.T {datatypes, globals, functions, main}) =
                       success = getArithSuccessWrapperLabel success,
                       ty = simplifyType ty}
           | Bug => Bug
-          | Call {func, entry, args, return} =>
+          | Call {func, args, return} =>
                let
                   val fi' = funcInfo func
-                  val ei' = entryInfo entry
                   datatype u = None
                              | Caller
                              | Some of Label.t
@@ -1373,13 +1329,12 @@ fun transform2 (Program.T {datatypes, globals, functions, main}) =
 
                   val args =
                      Vector.keepAllMap2
-                     (args, EntryInfo.args ei', fn (x, (y, _)) =>
+                     (args, FuncInfo.args fi', fn (x, (y, _)) =>
                       if VarInfo.isUsed y
                          then SOME x
                       else NONE)
                in
                   Call {func = func,
-                        entry = entry,
                         args = args,
                         return = return}
                end
@@ -1479,33 +1434,17 @@ fun transform2 (Program.T {datatypes, globals, functions, main}) =
       val shrink = shrinkFunction {globals = globals}
       fun simplifyFunction (f: Function.t): Function.t option =
          let
-            val {entries, blocks, mayInline, name, ...} = Function.dest f
+            val {args, blocks, mayInline, name, start, ...} = Function.dest f
             val fi = funcInfo name
          in
             if FuncInfo.isUsed fi
                then let
-                       val entries =
-                          Vector.keepAllMap
-                          (entries, fn entry =>
-                           let
-                              val FunctionEntry.T {name, args, start} = entry
-                              val ei = entryInfo name
-                           in
-                              if EntryInfo.isUsed ei
-                                 then let
-                                         val args =
-                                            Vector.keepAllMap2
-                                            (EntryInfo.args ei, args, fn ((vi, _), (x, ty)) =>
-                                             if VarInfo.isUsed vi
-                                                then SOME (x, simplifyType ty)
-                                             else NONE)
-                                      in
-                                         SOME (FunctionEntry.T {name = name,
-                                                                args = args,
-                                                                start = start})
-                                      end
-                              else NONE
-                           end)
+                       val args =
+                          Vector.keepAllMap2
+                          (FuncInfo.args fi, args, fn ((vi, _), (x, ty)) =>
+                           if VarInfo.isUsed vi
+                              then SOME (x, simplifyType ty)
+                           else NONE)
                        val blocks = simplifyBlocks blocks
                        val wrappers = Vector.fromList (FuncInfo.wrappers fi)
                        val blocks = Vector.concat [wrappers, blocks]
@@ -1532,12 +1471,13 @@ fun transform2 (Program.T {datatypes, globals, functions, main}) =
                                                else NONE))
                                 else NONE
                     in
-                       SOME (shrink (Function.new {entries = entries,
+                       SOME (shrink (Function.new {args = args,
                                                    blocks = blocks,
                                                    mayInline = mayInline,
                                                    name = name,
                                                    raises = raises,
-                                                   returns = returns}))
+                                                   returns = returns,
+                                                   start = start}))
                     end
             else NONE
          end

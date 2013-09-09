@@ -1,4 +1,4 @@
-(* Copyright (C) 2013 David Larsen.
+(* Copyright (C) 2013 Matthew Fluet, David Larsen.
  * Copyright (C) 2011 Matthew Fluet.
  * Copyright (C) 1999-2006 Henry Cejtin, Matthew Fluet, Suresh
  *    Jagannathan, and Stephen Weeks.
@@ -246,7 +246,7 @@ fun 'a analyze
       val loopStatement =
          Trace.trace ("Analyze.loopStatement", Statement.layout, Unit.layout)
          loopStatement
-      val _ = coerces ("main entry", Vector.new0 (), #args (funcEntry main))
+      val _ = coerces ("main entry", Vector.new0 (), #args (funcEntry (#entry main)))
       val _ = Vector.foreach (globals, loopStatement)
       val _ =
          List.foreach
