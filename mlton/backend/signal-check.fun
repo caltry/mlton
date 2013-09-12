@@ -153,26 +153,26 @@ fun insertInFunction (f: Function.t): Function.t =
              end)
          end
       (* Add a signal check at each function entry. *)
-      val entries = Vector.map
-         (entries,
-          fn FunctionEntry.T {args, name, start} =>
-            let
-               val newStart = Label.newNoname ()
-               val _ =
-                  addSignalCheck
-                  (Block.T {args = Vector.new0 (),
-                            kind = Kind.Jump,
-                            label = newStart,
-                            statements = Vector.new0 (),
-                            transfer = Transfer.Goto {args = Vector.new0 (),
-                                                      dst = start}})
-               val () = loop (Graph.loopForestSteensgaard (g, {root = labelNode start}))
-            in
-               FunctionEntry.T {args = args,
-                                name = name,
-                                start = newStart}
-            end
-         )
+      val (roots, entries) =
+         (Vector.unzip o Vector.map)
+         (entries, fn FunctionEntry.T {name, args, start} =>
+          let
+             val newStart = Label.newNoname ()
+             val _ =
+                addSignalCheck
+                (Block.T {args = Vector.new0 (),
+                          kind = Kind.Jump,
+                          label = newStart,
+                          statements = Vector.new0 (),
+                          transfer = Transfer.Goto {args = Vector.new0 (),
+                                                    dst = start}})
+          in
+             (labelNode start,
+              FunctionEntry.T {name = name,
+                               args = args,
+                               start = newStart})
+          end)
+      val () = loop (Graph.loopForestSteensgaard (g, {roots = roots}))
       val blocks =
          Vector.keepAllMap
          (blocks, fn b as Block.T {label, ...} =>

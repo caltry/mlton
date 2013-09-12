@@ -712,7 +712,7 @@ fun insertCoalesce (f: Function.t, handlesSignals) =
                in
                   ()
                end
-            val _ = setClass (Graph.loopForestSteensgaard (g, {root = root}))
+            val _ = setClass (Graph.loopForestSteensgaard (g, {roots = Vector.new1 root}))
             val numClasses = Counter.value c
             datatype z = datatype Control.limitCheck
             val _ =

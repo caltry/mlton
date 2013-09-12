@@ -1,4 +1,5 @@
-(* Copyright (C) 2009 Matthew Fluet.
+(* Copyright (C) 2013 Matthew Fluet.
+ * Copyright (C) 2009 Matthew Fluet.
  * Copyright (C) 1999-2007 Henry Cejtin, Matthew Fluet, Suresh
  *    Jagannathan, and Stephen Weeks.
  * Copyright (C) 1997-2000 NEC Research Institute.
@@ -161,7 +162,7 @@ fun insertInFunction (f: Function.t): Function.t =
                    statements = Vector.new0 (),
                    transfer = Transfer.Goto {args = Vector.new0 (),
                                              dst = start}})
-      val () = loop (Graph.loopForestSteensgaard (g, {root = labelNode start}))
+      val () = loop (Graph.loopForestSteensgaard (g, {roots = Vector.new1 (labelNode start)}))
       val blocks =
          Vector.keepAllMap
          (blocks, fn b as Block.T {label, ...} =>

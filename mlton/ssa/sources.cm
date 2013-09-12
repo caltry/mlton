@@ -160,6 +160,7 @@ simplify-types.old.fun
 simplify-types.fun
 useless.old.fun
 useless.fun
+zone.old.fun
 zone.fun
 simplify.old.sig
 simplify.sig

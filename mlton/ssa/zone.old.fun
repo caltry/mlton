@@ -1,5 +1,4 @@
-(* Copyright (C) 2013 Matthew Fluet.
- * Copyright (C) 2009 Matthew Fluet.
+(* Copyright (C) 2009 Matthew Fluet.
  * Copyright (C) 2004-2006, 2008 Henry Cejtin, Matthew Fluet, Suresh
  *    Jagannathan, and Stephen Weeks.
  *
@@ -7,7 +6,7 @@
  * See the file MLton-LICENSE for details.
  *)
 
-functor MeZone (S: ME_SSA2_TRANSFORM_STRUCTS): ME_SSA2_TRANSFORM =
+functor Zone (S: SSA2_TRANSFORM_STRUCTS): SSA2_TRANSFORM = 
 struct
 
 open S
@@ -23,7 +22,7 @@ structure Scope = UniqueId ()
 
 fun zoneFunction f =
    let
-      val {entries, mayInline, name, raises, returns, ...} = Function.dest f
+      val {args, mayInline, name, raises, returns, start, ...} = Function.dest f
       datatype z = datatype Exp.t
       datatype z = datatype Statement.t
       val {get = labelInfo: Label.t -> {isInLoop: bool ref,
@@ -50,7 +49,7 @@ fun zoneFunction f =
                        else ()
               | _ => doit ()
           end)
-      val dominatorForest = Function.dominatorForest f
+      val dominatorTree = Function.dominatorTree f
       (* Decide which labels to cut at. *)
       val cutDepth = !Control.zoneCutDepth
       fun addCuts (Tree.T (b, ts), depth: int) =
@@ -80,7 +79,7 @@ fun zoneFunction f =
          in
             Vector.foreach (ts, fn t => addCuts (t, depth))
          end
-      val () = Vector.foreach (dominatorForest, fn t => addCuts (t, cutDepth))
+      val () = addCuts (dominatorTree, cutDepth)
       (* Build a tuple of lives at each cut node. *)
       type info = {componentsRev: Var.t list ref,
                    numComponents: int ref,
@@ -229,16 +228,16 @@ fun zoneFunction f =
          in
             ()
          end
-      val info = newInfo ()
-      val () = Vector.foreach (dominatorForest, fn t => loop (t, info))
+      val () = loop (dominatorTree, newInfo ())
       val blocks = Vector.fromList (!blocks)
    in
-      Function.new {blocks = blocks,
-                    entries = entries,
+      Function.new {args = args,
+                    blocks = blocks,
                     mayInline = mayInline,
                     name = name,
                     raises = raises,
-                    returns = returns}
+                    returns = returns,
+                    start = start}
    end
 
 fun maybeZoneFunction (f, ac) =

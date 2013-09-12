@@ -724,10 +724,10 @@ val stronglyConnectedComponents =
       end
    end
 
-(* This code assumes everything is reachable from the root.
+(* This code assumes everything is reachable from the roots.
  * Otherwise it may loop forever.
  *)
-fun loopForestSteensgaard (g: t, {root: Node.t}): LoopForest.t =
+fun loopForestSteensgaard (g: t, {roots: Node.t vector}): LoopForest.t =
    let
       val {get =
            nodeInfo:
@@ -747,8 +747,8 @@ fun loopForestSteensgaard (g: t, {root: Node.t}): LoopForest.t =
                           next = ref NONE,
                           original = original})
       val _ = List.foreach (nodes g, fn n => newNodeInfo (n, n))
-      (* Treat the root as though there is an external edge into it. *)
-      val _ = #isHeader (nodeInfo root) := true
+      (* Treat each root as though there is an external edge into it. *)
+      val _ = Vector.foreach (roots, fn root => #isHeader (nodeInfo root) := true)
       (* Before calling treeFor, nodeInfo must be defined for all nodes in g. *)
       fun treeFor (g: t): LoopForest.t  =
          let

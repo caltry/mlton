@@ -115,7 +115,7 @@ signature DIRECTED_GRAPH =
                                        child: 'a t} vector,
                                notInLoop: 'a Node.t vector}
          end
-      val loopForestSteensgaard: 'a t * {root: 'a Node.t} -> 'a LoopForest.t
+      val loopForestSteensgaard: 'a t * {roots: 'a Node.t vector} -> 'a LoopForest.t
       val new: unit -> 'a t
       val newNode: 'a t -> 'a Node.t
       val nodes: 'a t -> 'a Node.t list
