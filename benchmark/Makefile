@@ -1,4 +1,5 @@
-## Copyright (C) 2009 Matthew Fluet.
+## Copyright (C) 2013 Matthew Fluet.
+ # Copyright (C) 2009 Matthew Fluet.
  # Copyright (C) 1999-2007 Henry Cejtin, Matthew Fluet, Suresh
  #    Jagannathan, and Stephen Weeks.
  # Copyright (C) 1997-2000 NEC Research Institute.
@@ -29,7 +30,7 @@ $(NAME): $(NAME).mlb $(shell PATH="$(BIN):$$PATH" && "$(MLTON)" -stop f $(NAME).
 clean:
 	../bin/clean
 
-BENCH := barnes-hut boyer checksum count-graphs DLXSimulator fft fib flat-array hamlet imp-for knuth-bendix lexgen life logic mandelbrot matrix-multiply md5 merge mlyacc model-elimination mpuz nucleic output1 peek psdes-random ratio-regions ray raytrace simple smith-normal-form tailfib tak tensor tsp tyan vector-concat vector-rev vliw wc-input1 wc-scanStream zebra zern
+BENCH := barnes-hut boyer checksum count-graphs DLXSimulator even-odd fft fib flat-array hamlet imp-for knuth-bendix lexgen life logic mandelbrot matrix-multiply md5 merge mlyacc model-elimination mpuz nucleic output1 peek psdes-random ratio-regions ray raytrace simple smith-normal-form tailfib tak tensor tsp tyan vector-concat vector-rev vliw wc-input1 wc-scanStream zebra zern
 FPBENCH := barnes-hut fft hamlet mandelbrot matrix-multiply nucleic ray raytrace simple tensor tsp tyan vliw zern
 
 BFLAGS := -mlton "/usr/bin/mlton" -mlton "mlton -optimize-ssa {false,true}"
@@ -41,11 +42,10 @@ test: $(NAME)
 	cd tests && ../benchmark $(BFLAGS) $(BENCH)
 
 QBENCH := $(BENCH)
-QBFLAGS := -mlton "~/devel/mlton/mlton-20061119-1.x86-darwin/build/bin/mlton"
-QBFLAGS += -mlton "~/devel/mlton/mlton.svn.trunk/build/bin/mlton"
-# QBFLAGS += -mlton "~/devel/mlton/mlton.svn.trunk.inline/build/bin/mlton -drop-pass introduceLoops1 -drop-pass loopInvariant1 -inline-leafa-loops true -inline-leafa-repeat false -inline-leafa-size 20 -drop-pass inlineLeaf2"
-# QBFLAGS += -mlton "~/devel/mlton/mlton.svn.trunk.inline/build/bin/mlton -inline-leafa-loops true -inline-leafa-repeat true -inline-leafa-size 20 -inline-leafb-loops true -inline-leafb-repeat true -inline-leafb-size 40"
-QBFLAGS += -mlton "~/devel/mlton/mlton.svn.trunk.inline/build/bin/mlton"
+QBFLAGS := -mlton "~/devel/mlton/mlton-20130715-1.amd64-linux/build/bin/mlton"
+QBFLAGS += -mlton "~/devel/mlton/mlton.git/build/bin/mlton"
+QBFLAGS += -mlton "~/devel/mlton/mlton.git/build/bin/mlton -check-multi-entry true -drop-pass duplicateEntries"
+QBFLAGS += -mlton "~/devel/mlton/mlton.git/build/bin/mlton -check-multi-entry true"
 
 .PHONY: qtest
 qtest: $(NAME)
