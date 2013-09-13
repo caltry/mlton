@@ -53,10 +53,8 @@ structure AllocateRegisters = MeAllocateRegisters (structure Machine = Machine
                                                    structure Rssa = Rssa)
 structure Chunkify = MeChunkify (Rssa)
 structure ImplementHandlers = MeImplementHandlers (structure Rssa = Rssa)
-(* FIXME: Re-implement profiling in the multi-entry ILs.
-structure ImplementProfiling = ImplementProfiling (structure Machine = Machine
-                                                   structure Rssa = Rssa)
-*)
+structure ImplementProfiling = MeImplementProfiling (structure Machine = Machine
+                                                     structure Rssa = Rssa)
 structure LimitCheck = MeLimitCheck (structure Rssa = Rssa)
 structure ParallelMove = ParallelMove ()
 structure SignalCheck = MeSignalCheck(structure Rssa = Rssa)
@@ -200,19 +198,14 @@ fun toMachine (program: Ssa.Program.t, codegen) =
             val p = maybePass ({name = "rssaShrink2", 
                                 doit = Program.shrink}, p)
             val () = Program.checkHandlers p
-            (* FIXME: Re-implement profiling in the multi-entry ILs.
             val (p, makeProfileInfo) =
                pass' ({name = "implementProfiling",
                        doit = ImplementProfiling.doit},
                       fn (p,_) => p, p)
-            *)
             val p = maybePass ({name = "rssaOrderFunctions", 
                                 doit = Program.orderFunctions}, p)
          in
-            (* FIXME: Re-implement profiling in the multi-entry ILs.
             (p, makeProfileInfo)
-            *)
-            (p, fn _ => NONE)
          end
       val (program, makeProfileInfo) =
          Control.passTypeCheck

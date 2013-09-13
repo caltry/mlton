@@ -1,12 +1,11 @@
-(* Copyright (C) 2013 Matthew Fluet.
- * Copyright (C) 2002-2007 Henry Cejtin, Matthew Fluet, Suresh
+(* Copyright (C) 2002-2007 Henry Cejtin, Matthew Fluet, Suresh
  *    Jagannathan, and Stephen Weeks.
  *
  * MLton is released under a BSD-style license.
  * See the file MLton-LICENSE for details.
  *)
 
-functor MeImplementProfiling (S: ME_IMPLEMENT_PROFILING_STRUCTS): ME_IMPLEMENT_PROFILING =
+functor ImplementProfiling (S: IMPLEMENT_PROFILING_STRUCTS): IMPLEMENT_PROFILING = 
 struct
 
 open S
@@ -369,7 +368,7 @@ fun doit program =
       end
       fun doFunction (f: Function.t): Function.t =
          let
-            val {blocks, entries, name, raises, returns} = Function.dest f
+            val {args, blocks, name, raises, returns, start} = Function.dest f
             val _ =
                if not debug
                   then ()
@@ -422,7 +421,6 @@ fun doit program =
                 setLabelInfo (label, {block = block,
                                       visited1 = ref false,
                                       visited2 = ref false}))
-(*
             (* Find the first Enter statement and (conceptually) move it to the
              * front of the function.
              *)
@@ -453,7 +451,6 @@ fun doit program =
             in
                val first = (goto start; NONE) handle Yes z => SOME z
             end
-*)
             val blocks = ref []
             datatype z = datatype Statement.t
             datatype z = datatype ProfileExp.t
@@ -618,7 +615,6 @@ fun doit program =
                         val Block.T {args, kind, label, statements, transfer,
                                      ...} = block
                         val statements =
-(*
                            case first of
                               NONE => statements
                             | SOME (firstLabel, firstEnter) =>
@@ -635,8 +631,6 @@ fun doit program =
                                             [Vector.new1 firstEnter,
                                              statements]
                                       else statements
-*)
-                           statements
                         val _ =
                            let
                               fun add pushes =
@@ -895,21 +889,19 @@ fun doit program =
                                   transfer = transfer}
                      end
                end
-            val _ =
-               Vector.foreach
-               (entries, fn FunctionEntry.T {start, ...} => goto (start, []))
+            val _ = goto (start, [])
             val blocks = Vector.fromList (!blocks)
          in
-            Function.new {blocks = blocks,
-                          entries = entries,
+            Function.new {args = args,
+                          blocks = blocks,
                           name = name,
                           raises = raises,
-                          returns = returns}
+                          returns = returns,
+                          start = start}
          end
       val program = Program.T {functions = List.revMap (functions, doFunction),
                                handlesSignals = handlesSignals,
-                               main = {func = doFunction (#func main),
-                                       entry = #entry main},
+                               main = doFunction main,
                                objectTypes = objectTypes}
       val _ = addFuncEdges ()
       val names = Vector.fromListRev (!names)

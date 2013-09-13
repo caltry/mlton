@@ -347,10 +347,6 @@ structure Function =
                                case exp of
                                   Profile pe =>
                                      (case pe of
-                                     (* FIXME: This method of checking to make
-                                      * sure that Enter/Leave statements match
-                                      * won't work for functions with multiple
-                                      * entry points. *)
                                          Enter s => s :: sources
                                        | Leave s =>
                                             (case sources of
@@ -397,8 +393,9 @@ structure Function =
                            then ()
                         else bug "mismatched block"
                end
-            val () = Vector.foreach
-               (entries, fn FunctionEntry.T{start, ...} => goto (start, []))
+            val () =
+               Vector.foreach
+               (entries, fn FunctionEntry.T {start, ...} => goto (start, []))
             val _ = Vector.foreach (blocks, fn Block.T {label, ...} => rem label)
          in
             ()
