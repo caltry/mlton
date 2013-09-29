@@ -77,6 +77,7 @@ local
    ssa-transform.sig
    ssa2-transform.old.sig
    ssa2-transform.sig
+   combineTailcalls.fun
    common-arg.old.fun
    common-arg.fun
    common-block.old.fun

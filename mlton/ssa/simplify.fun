@@ -13,6 +13,7 @@ struct
 
 open S
 
+structure CombineTailcalls = MeCombineTailcalls (S)
 structure CommonArg = MeCommonArg (S)
 structure CommonBlock = MeCommonBlock (S)
 structure CommonSubexp = MeCommonSubexp (S)
@@ -40,8 +41,8 @@ type pass = {name: string,
              doit: Program.t -> Program.t}
 
 val ssaPassesDefault =
-   {name = "duplicateEntries", doit = DuplicateEntries.transform} ::
    {name = "removeUnused1", doit = RemoveUnused.transform} ::
+   {name = "combineTailcalls1", doit = CombineTailcalls.transform} ::
    {name = "introduceLoops1", doit = IntroduceLoops.transform} ::
    {name = "loopInvariant1", doit = LoopInvariant.transform} ::
    {name = "inlineLeaf1", doit = fn p => 
@@ -68,6 +69,7 @@ val ssaPassesDefault =
     *   - before inlining so that hash functions can be inlined
     *)
    {name = "polyHash", doit = PolyHash.transform} ::
+   {name = "combineTailcalls2", doit = CombineTailcalls.transform} ::
    {name = "introduceLoops2", doit = IntroduceLoops.transform} ::
    {name = "loopInvariant2", doit = LoopInvariant.transform} ::
    {name = "contify2", doit = Contify.transform} ::
@@ -76,6 +78,7 @@ val ssaPassesDefault =
    {name = "localFlatten2", doit = LocalFlatten.transform} ::
    {name = "removeUnused3", doit = RemoveUnused.transform} ::
    {name = "contify3", doit = Contify.transform} ::
+   {name = "combineTailcalls3", doit = CombineTailcalls.transform} ::
    {name = "introduceLoops3", doit = IntroduceLoops.transform} ::
    {name = "loopInvariant3", doit = LoopInvariant.transform} ::
    {name = "localRef", doit = LocalRef.transform} ::
