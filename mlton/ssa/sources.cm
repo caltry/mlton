@@ -78,6 +78,7 @@ shrink.old.fun
 shrink.fun
 shrink2.old.fun
 shrink2.fun
+case-entries.fun
 flat-lattice.sig
 flat-lattice.fun
 n-point-lattice.sig
