@@ -141,6 +141,7 @@ local
    remove-unused2.fun
    simplify-types.old.fun
    simplify-types.fun
+   case-entries.fun
    useless.old.fun
    useless.fun
    zone.old.fun

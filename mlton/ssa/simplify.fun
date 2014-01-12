@@ -35,6 +35,7 @@ structure Redundant = MeRedundant (S)
 structure RedundantTests = MeRedundantTests (S)
 structure RemoveUnused = MeRemoveUnused (S)
 structure SimplifyTypes = MeSimplifyTypes (S)
+structure CaseEntries = MeCaseEntries (S)
 structure Useless = MeUseless (S)
 
 type pass = {name: string,
@@ -91,6 +92,7 @@ val ssaPassesDefault =
    {name = "redundantTests", doit = RedundantTests.transform} ::
    {name = "redundant", doit = Redundant.transform} ::
    {name = "knownCase", doit = KnownCase.transform} ::
+   {name = "caseEntries", doit = CaseEntries.transform} ::
    {name = "removeUnused4", doit = RemoveUnused.transform} ::
    nil
 
