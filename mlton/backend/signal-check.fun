@@ -141,12 +141,15 @@ fun insertInFunction (f: Function.t): Function.t =
                 val _ =
                    Vector.foreach
                    (headers, fn n =>
-                    let
-                       val i = nodeIndex n
-                       val _ = Array.update (isHeader, i, true)
-                    in
-                       addSignalCheck (Vector.sub (blocks, i))
-                    end)
+                     if Array.sub (isHeader, nodeIndex n)
+                        then ()
+                        else
+                          let
+                             val i = nodeIndex n
+                             val _ = Array.update (isHeader, i, true)
+                          in
+                             addSignalCheck (Vector.sub (blocks, i))
+                          end)
                 val _ = loop child
              in
                 ()
