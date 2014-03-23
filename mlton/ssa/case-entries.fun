@@ -15,8 +15,6 @@ exception NoSuchBlock (* There is no block associated with that label. *)
 
 open S
 
-(* XXX Can we take in a Con.t option?  That way we can handle the default case (and
-   any case where we don't use constructors!) *)
 val {get = entryInfo: FuncEntry.t -> Con.t -> FunctionEntry.t,
      set = setEntryInfo: (FuncEntry.t * (Con.t -> FunctionEntry.t)) -> unit,
      destroy = destroyEntryInfo} =
