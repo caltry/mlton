@@ -15,13 +15,32 @@ exception NoSuchBlock (* There is no block associated with that label. *)
 
 open S
 
-val {get = entryInfo: FuncEntry.t -> Con.t -> FunctionEntry.t,
-     set = setEntryInfo: (FuncEntry.t * (Con.t -> FunctionEntry.t)) -> unit,
-     destroy = destroyEntryInfo} =
-   Property.destGetSetOnce
-   (FuncEntry.plist,
-    Property.initFun (fn e => fn _ => raise Fail ("no entryInfo for " ^
-                                                   (FuncEntry.toString e))))
+
+(* Since entryInfo is a mapping to a mapping, we need a good way of making sure
+ * that we destroy the Con.t |-> FunctionEntry.t maps when we destroy the
+ * entryInfo map.  To make sure that we don't forget about this later, override
+ * the set and destroy methods to take care of the 2nd level maps.*)
+local
+   val conInfoMapDestructors = ref []
+   val {get = entryInfo: FuncEntry.t -> Con.t -> FunctionEntry.t,
+        set = setEntryInfo: (FuncEntry.t * (Con.t -> FunctionEntry.t)) -> unit,
+        destroy = destroyEntryInfo} =
+      Property.destGetSetOnce
+      (FuncEntry.plist,
+       Property.initFun (fn e => fn _ => raise Fail ("no entryInfo for " ^
+                                                      (FuncEntry.toString e))))
+in
+   val entryInfo = entryInfo
+   val setEntryInfo = fn (fe, conInfoMap, destructor: unit -> unit) =>
+      let
+         val () = conInfoMapDestructors := destructor :: !conInfoMapDestructors
+      in
+         setEntryInfo (fe, conInfoMap)
+      end
+   val destroyEntryInfo = fn () =>
+      (List.foreach (!conInfoMapDestructors, fn destructor => destructor ());
+       destroyEntryInfo ())
+end
 
 fun transformFun func =
    let
@@ -149,7 +168,7 @@ fun transformFun func =
                in
                   (newEntry :: newEntries, joinBlock :: newBlocks)
                end)
-            val () = setEntryInfo (entryName, caseEntry)
+            val () = setEntryInfo (entryName, caseEntry, destroyCaseEntry)
          in
             (newEntries, newBlocks)
          end)
