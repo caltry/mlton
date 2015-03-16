@@ -1,4 +1,4 @@
-(* Copyright (C) 2013-2014 David Larsen.
+(* Copyright (C) 2013-2015 David Larsen.
  *
  * MLton is released under a BSD-style license.
  * See the file MLton-LICENSE for details.
@@ -133,7 +133,7 @@ fun transformFun func =
                  (* Referenced outside of this scope.  Be careful about
                     destroying it. *)
                  destroy = destroyCaseEntry} =
-               Property.destGetSet
+               Property.destGetSetOnce
                (Con.plist,
                 Property.initFun (fn _ => entry)
                )
