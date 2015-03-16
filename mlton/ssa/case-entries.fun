@@ -67,36 +67,33 @@ fun transformFun func =
       val () = Vector.foreach (entries, fn FunctionEntry.T{start, ...} =>
          setIsEntryBlock (start, true))
 
-      (* We use this to determine if a variable is used in a function, this way
-         we can see that we need a var to be present when trying to skip past
-         entries.
-
-         XXX: A better way to do this would be to look at the def-use chain or
-         the dominator tree to see if a variable needs to be in scope.  It's
-         possible that the simple (mapping) approach is ignoring some potential
-         optimizations.
-      *)
-      val {get = isVarUsed: Var.t -> bool,
-           set = varIsUsed: (Var.t * bool) -> unit,
-           destroy = destroyVarUsageMap} =
-         Property.destGetSet (Var.plist, Property.initConst false)
+      (* Build a dictionary of Var.t -> Type.t to use when re-constructing the
+         datatype in the new entry. *)
+      val {get = varType: Var.t -> Type.t,
+           set = varSetType: (Var.t * Type.t) -> unit,
+           destroy = destroyVarTypeMap} =
+         Property.destGetSet (Var.plist,
+                              Property.initRaise ("varType", Var.layout))
       fun foreachVar fx =
          Vector.foreach
-         (blocks, fn Block.T {args, label, statements, transfer, ...} =>
+         (blocks, fn Block.T {args, label, statements, ...} =>
             (* Don't count a variable as being used if it only appears in an
                entry block. *)
             if isEntryBlock label
                then ()
                else
-                (Vector.foreach (args, fn (v, _) => fx v)
+                (Vector.foreach (args, fn (v, t) => fx t v)
                  ; Vector.foreach (statements,
-                                   fn Statement.T {var, ty = _, exp} => 
-                                      (Option.app (var, fx)
+                                   fn Statement.T {var, ty, exp} =>
+                                      (Option.app (var, fx ty)
                                       (* XXX: Why was Exp not included in
                                          Function.foreachVar ? *)
-                                      ; Exp.foreachVar (exp, fx)))
-                 ; Transfer.foreachVar (transfer, fx)))
-      val () = foreachVar (fn v => varIsUsed (v, true))
+                                      ; Exp.foreachVar (exp, fx ty)))))
+      val () = foreachVar (fn t => fn v => varSetType (v, t))
+      fun foreachVar fx =
+         Vector.foreach (entries, fn FunctionEntry.T {args, ...} =>
+            Vector.foreach(args, fn (v,t) => fx t v))
+      val () = foreachVar (fn t => fn v => varSetType (v, t))
 
       val (newEntries, newBlocks) =
          Vector.fold (entries, ([],[]), fn (entry, (newEntries, newBlocks)) =>
@@ -109,25 +106,14 @@ fun transformFun func =
              * does is scruitinize to argument into constructors, we're
              * insterested.  If it does more than that, it's likely creating
              * vars that are expected to be around later in the function. *)
-            val constructors =
+            val constructorCase =
                case Vector.peek (blocks, fn Block.T {label, ...} => Label.equals (label, start)) of
                   SOME (Block.T {statements, transfer =
-                     Transfer.Case {cases = Cases.Con v, ...}, ...}) =>
+                     Transfer.Case {cases = Cases.Con v, test, ...}, ...}) =>
                         if Vector.length statements = 0
-                           then v
-                           else Vector.new0 ()
-               |  _  => Vector.new0 ()
-            (*
-             * If the constructed value is used later in the function, we can't
-             * create an entry that skips its definition.
-             *
-             * TODO: If it turns out that this happens often, it may be useful
-             * to re-construct it on demand later.
-             *)
-            val constructors =
-               if (not (Vector.exists (entryArgs, isVarUsed o #1)))
-                  then constructors
-                  else Vector.new0 ()
+                           then SOME {scruineeName=test, constructors = v}
+                           else NONE
+               |  _  => NONE
             val {get = caseEntry: Con.t -> FunctionEntry.t,
                  set = setCaseEntry: Con.t * FunctionEntry.t -> unit,
                  (* Referenced outside of this scope.  Be careful about
@@ -137,37 +123,65 @@ fun transformFun func =
                (Con.plist,
                 Property.initFun (fn _ => entry)
                )
-            val (newEntries, newBlocks) = Vector.fold
-               (constructors, (newEntries, newBlocks),
-               fn ((constructor, label), (newEntries, newBlocks)) =>
-               let
-                  (* Create a new block for the entry point to jump to.
-                   * The new block takes in no arguments (they were defined in
-                   * the entry point), then passes the entry points' arguments
-                   * off to the block that the case transfer would ultimately
-                   * have jumped to for the current constructor.
-                   *)
-                  val newEntryName: FuncEntry.t = FuncEntry.new entryName
-                  val destBlock = getBlock label
-                  val blockArgs = Block.args destBlock
-                  val entryArgs =
-                     Vector.map (blockArgs, fn (x, ty) => (Var.new x, ty))
-                  val entryArgsNoType = Vector.map (entryArgs, fn (x,_) => x)
-                  val newJoin = Label.new label
-                  val joinBlock = Block.T {args = Vector.new0 (),
-                                           label = newJoin,
-                                           statements = Vector.new0 (),
-                                           transfer = (Transfer.Goto
-                                                      {dst = label,
-                                                       args = entryArgsNoType})}
-                  (* args should be the arguments of the destination block. *)
-                  val newEntry = FunctionEntry.T {args = entryArgs,
-                                                  name = newEntryName,
-                                                  start = newJoin}
-                  val () = setCaseEntry (constructor, newEntry)
-               in
-                  (newEntry :: newEntries, joinBlock :: newBlocks)
-               end)
+            val (newEntries, newBlocks) = case constructorCase of
+               SOME {constructors, scruineeName} =>
+                  Vector.fold (constructors, (newEntries, newBlocks),
+                  fn ((constructor, label), (newEntries, newBlocks)) =>
+                  let
+                     (* Create a new block for the entry point to jump to.
+                      * The new block takes in no arguments (they were defined in
+                      * the entry point), then passes the entry points' arguments
+                      * off to the block that the case transfer would ultimately
+                      * have jumped to for the current constructor.
+                      *)
+                     val newEntryName: FuncEntry.t = FuncEntry.new entryName
+                     val destBlock = getBlock label
+                     val blockArgs = Block.args destBlock
+                     val origEntryArgs = entryArgs
+                     val entryArgs =
+                        Vector.map (blockArgs, fn (x, ty) => (Var.new x, ty))
+                     val entryArgsNoType = Vector.map (entryArgs, fn (x,_) => x)
+
+                     val recreatedConstructor = Statement.T
+                        {var = SOME scruineeName,
+                         exp = Exp.ConApp {args=Vector.map(entryArgs, #1),
+                                           con=constructor},
+                         ty = varType scruineeName}
+
+
+                     val joinStatements = Vector.new1 recreatedConstructor
+
+                     val newJoin = Label.new label
+                     val joinBlock = Block.T {args = Vector.new0 (),
+                                              label = newJoin,
+                                              statements = joinStatements,
+                                              transfer = (Transfer.Goto
+                                                         {dst = label,
+                                                          args = entryArgsNoType})}
+                     (* args should be the arguments of the destination block. *)
+                     (* FIXME: Ok, so the problem that I'm having with the
+                       regression tests (see ugly hack below) is that we might
+                       be replacing an entry that had arguments besides the
+                       scruitnee.  We need to make sure that we can take in
+                       those arguments as well. *)
+                     val newEntry = FunctionEntry.T {args = entryArgs,
+                                                     name = newEntryName,
+                                                     start = newJoin}
+
+                     (* FIXME: ugly hack to only take in entries that only had
+                     one argument. *)
+                     val () = if (Vector.size origEntryArgs) > 1
+                        then ()
+                        else setCaseEntry (constructor, newEntry)
+
+                  in
+                     (* FIXME: ugly hack to only take in entries that only had
+                     one argument. *)
+                     if (Vector.size origEntryArgs) > 1
+                        then (newEntries, newBlocks)
+                        else (newEntry :: newEntries, joinBlock :: newBlocks)
+                  end)
+            |  NONE  => (newEntries, newBlocks)
             val () = setEntryInfo (entryName, caseEntry, destroyCaseEntry)
          in
             (newEntries, newBlocks)
@@ -184,7 +198,7 @@ fun transformFun func =
 
       val () = destroyGetBlock ()
       val () = destroyIsEntryBlock ()
-      val () = destroyVarUsageMap ()
+      val () = destroyVarTypeMap ()
    in
       newFunction
    end
@@ -255,9 +269,9 @@ fun transform (Program.T {datatypes, globals, functions, main}) =
 
       val () = destroyEntryInfo ()
    in
-      Program.T {datatypes = datatypes,
-                 globals = globals,
-                 functions = functions,
-                 main = main}
+      restore(Program.T {datatypes = datatypes,
+                         globals = globals,
+                         functions = functions,
+                         main = main})
    end
 end
