@@ -22,8 +22,10 @@ open S
  * the set and destroy methods to take care of the 2nd level maps.*)
 local
    val conInfoMapDestructors = ref []
-   val {get = entryInfo: FuncEntry.t -> Con.t -> FunctionEntry.t,
-        set = setEntryInfo: (FuncEntry.t * (Con.t -> FunctionEntry.t)) -> unit,
+   val {get = entryInfo: FuncEntry.t -> Con.t ->
+         (FunctionEntry.t * (Var.t vector -> Var.t vector -> Var.t vector)),
+        set = setEntryInfo: (FuncEntry.t * (Con.t ->
+         (FunctionEntry.t * (Var.t vector -> Var.t vector -> Var.t vector)))) -> unit,
         destroy = destroyEntryInfo} =
       Property.destGetSetOnce
       (FuncEntry.plist,
@@ -114,20 +116,28 @@ fun transformFun func =
                            then SOME {scruineeName=test, constructors = v}
                            else NONE
                |  _  => NONE
-            val {get = caseEntry: Con.t -> FunctionEntry.t,
-                 set = setCaseEntry: Con.t * FunctionEntry.t -> unit,
+            val {get = caseEntry: Con.t -> (FunctionEntry.t
+                  * (Var.t vector -> Var.t vector -> Var.t vector)),
+                 set = setCaseEntry: Con.t * (FunctionEntry.t
+                  * (Var.t vector -> Var.t vector -> Var.t vector)) -> unit,
                  (* Referenced outside of this scope.  Be careful about
                     destroying it. *)
                  destroy = destroyCaseEntry} =
                Property.destGetSetOnce
                (Con.plist,
-                Property.initFun (fn _ => entry)
+                Property.initFun (fn _ => (entry, (fn x => fn y => Vector.concat [x,y])))
                )
             val (newEntries, newBlocks) = case constructorCase of
                SOME {constructors, scruineeName} =>
                   Vector.fold (constructors, (newEntries, newBlocks),
-                  fn ((constructor, label), (newEntries, newBlocks)) =>
+                  fn ((constructor, conDestLabel), (newEntries, newBlocks)) =>
                   let
+                     val strippedArgPosition = Vector.index (entryArgs,
+                        (fn (argName, _) => Var.equals (argName, scruineeName)))
+                     (* FuncEntry arguments without the scruinee argument *)
+                     val strippedArgs = Vector.keepAll (entryArgs,
+                        (fn (argName, _) => (not o Var.equals) (argName, scruineeName)))
+
                      (* Create a new block for the entry point to jump to.
                       * The new block takes in no arguments (they were defined in
                       * the entry point), then passes the entry points' arguments
@@ -135,51 +145,90 @@ fun transformFun func =
                       * have jumped to for the current constructor.
                       *)
                      val newEntryName: FuncEntry.t = FuncEntry.new entryName
-                     val destBlock = getBlock label
+                     val destBlock = getBlock conDestLabel
                      val blockArgs = Block.args destBlock
                      val origEntryArgs = entryArgs
-                     val entryArgs =
+
+                     val argsForMatchruleDestBlock =
                         Vector.map (blockArgs, fn (x, ty) => (Var.new x, ty))
-                     val entryArgsNoType = Vector.map (entryArgs, fn (x,_) => x)
+                     val argsForMatchruleDestBlockNoType = Vector.map
+                        (argsForMatchruleDestBlock, fn (x,_) => x)
+
+                     fun updateCallerArgs (argv: Var.t vector) (conArgv: Var.t vector) : Var.t vector =
+                        let
+                           val new_argv = case strippedArgPosition of
+                              SOME argPosition => Vector.keepAllMapi (argv,
+                                 (fn (index, arg) =>
+                                    if index = argPosition
+                                       then NONE
+                                       else SOME arg
+                                 ))
+                            | NONE => argv
+                        in
+                           Vector.concat [new_argv, conArgv]
+                        end
+
+                     val updatedArgs = Vector.concat
+                        [strippedArgs, argsForMatchruleDestBlock]
+
+                     (*
+                     val () = print ((FuncEntry.toString newEntryName) ^ "\n")
+                     val () = print ("old args: " ^ (Vector.toString (Var.toString o #1) entryArgs) ^ "\n")
+                     val () = print ("removed arg: " ^ (Var.toString scruineeName) ^ "\n")
+                     val () = print ("new args: " ^ (Vector.toString (Var.toString o #1) updatedArgs) ^ "\n")
+                     *)
+
+                     (* New, hacky workaround for SSA restore *)
+                     val updatedTwiceArgs = Vector.map (updatedArgs,
+                        fn (v, t) => (Var.new v, t))
 
                      val recreatedConstructor = Statement.T
                         {var = SOME scruineeName,
-                         exp = Exp.ConApp {args=Vector.map(entryArgs, #1),
+                         exp = Exp.ConApp {args=Vector.map(argsForMatchruleDestBlock, #1),
                                            con=constructor},
                          ty = varType scruineeName}
 
-
                      val joinStatements = Vector.new1 recreatedConstructor
 
-                     val newJoin = Label.new label
+
+                     val newJoin2 = Label.new conDestLabel
+                     val joinBlock2 = Block.T {args = updatedArgs,
+                                               label = newJoin2,
+                                               statements = joinStatements,
+                                               transfer = (Transfer.Goto
+                                                          {dst = conDestLabel,
+                                                           args = argsForMatchruleDestBlockNoType})}
+
+                     val newJoin = Label.new conDestLabel
                      val joinBlock = Block.T {args = Vector.new0 (),
                                               label = newJoin,
-                                              statements = joinStatements,
+                                              statements = Vector.new0 (),
                                               transfer = (Transfer.Goto
-                                                         {dst = label,
-                                                          args = entryArgsNoType})}
+                                                         {dst = newJoin2,
+                                                          args = Vector.map (updatedTwiceArgs, #1)})}
+
+
                      (* args should be the arguments of the destination block. *)
                      (* FIXME: Ok, so the problem that I'm having with the
                        regression tests (see ugly hack below) is that we might
                        be replacing an entry that had arguments besides the
                        scruitnee.  We need to make sure that we can take in
                        those arguments as well. *)
-                     val newEntry = FunctionEntry.T {args = entryArgs,
+                     (* FIXME: This is an ugly hack to try to get around a shortcoming in SSA restore *)
+                     val newEntry = FunctionEntry.T {args = updatedTwiceArgs, (* FIXME *) (* XXX FIXED *)
                                                      name = newEntryName,
                                                      start = newJoin}
 
                      (* FIXME: ugly hack to only take in entries that only had
                      one argument. *)
-                     val () = if (Vector.size origEntryArgs) > 1
-                        then ()
-                        else setCaseEntry (constructor, newEntry)
+                     (* XXX FIXED *)
+                     val () = setCaseEntry (constructor, (newEntry, updateCallerArgs))
 
                   in
                      (* FIXME: ugly hack to only take in entries that only had
                      one argument. *)
-                     if (Vector.size origEntryArgs) > 1
-                        then (newEntries, newBlocks)
-                        else (newEntry :: newEntries, joinBlock :: newBlocks)
+                     (* XXX FIXED *)
+                     (newEntry :: newEntries, joinBlock2 :: joinBlock :: newBlocks)
                   end)
             |  NONE  => (newEntries, newBlocks)
             val () = setEntryInfo (entryName, caseEntry, destroyCaseEntry)
@@ -218,37 +267,42 @@ fun transform (Program.T {datatypes, globals, functions, main}) =
                fn Block.T {args, label, statements, transfer = transfer as
                   Transfer.Call{args = tr_args, entry, func, return}} =>
                   let
-                     (* XXX: Right now, only handing calls with one argument,
-                        so that we only have one constructor to search for. *)
-                     val constructed_var =
-                        if Vector.length tr_args > 0
-                           then Vector.sub (tr_args, 0)
-                           (* FIXME: Ugly hack.  My intent here is to make sure
-                              that there is no match for constructed_var, but I
-                              really just need to throw an exception or
-                              re-think my flow control.  *)
-                           else Var.newNoname ()
-                     (* Grab the statement that creates this argument. *)
-                     val stmt_o = Vector.peek (statements,
-                        fn Statement.T{var = SOME var, ...} =>
-                           Var.equals (var, constructed_var)
-                        |  _ => false)
-                     (* If yes, then use the contructor's arguments. *)
-                     val (new_args, skipped_con) = case stmt_o of
-                        SOME (Statement.T{exp = Exp.ConApp {args, con}, ...}) =>
-                           (args, SOME con)
-                     |  _ => (tr_args, NONE)
-                     (* And update which entry we call. *)
-                     val new_entry = case skipped_con of
-                        NONE  => entry
-                     |  SOME con => FunctionEntry.name (entryInfo entry con)
-                     (* Make sure that the new entry was actually created! *)
-                     val new_transfer = if FuncEntry.equals (entry, new_entry)
-                        then transfer
-                        else Transfer.Call {args = new_args,
-                                            entry = new_entry,
-                                            func = func,
-                                            return = return}
+                     val datatypeArgs : (Var.t * Var.t vector * Con.t) vector = Vector.keepAllMap (tr_args,
+                        (* XXX: Lazy, we only look at the current block for the
+                           construction of this datatype. *)
+                        fn arg => Vector.peekMap (statements,
+                           fn statement as Statement.T{var = SOME var, exp = Exp.ConApp{args, con}, ...} =>
+                              (* XXX: we can probably extract the args we
+                              need from here (as a speedup, but I'll come
+                              back to this. *)
+                              if Var.equals (var, arg)
+                                 then SOME (arg, args, con)
+                                 else NONE
+                           |  _ => NONE))
+                     (* Now, we need to see if there is a new entry point for
+                        any of these constructors.  We know there can be only
+                        one, because the generator only produces one. *)
+                     val newEntryStuff = Vector.peekMap (datatypeArgs,
+                        fn (datatypeVarname, conArgs, con) =>
+                           let
+                              val (new_entry, new_args_fn) = entryInfo entry con
+                           in
+                              if FuncEntry.equals (FunctionEntry.name new_entry, entry)
+                                 then NONE
+                                 else SOME (conArgs, new_entry, new_args_fn)
+                           end)
+
+                     val new_transfer = case newEntryStuff of
+                        NONE                                   => transfer
+                     |  SOME (conArgs, new_entry, new_args_fn) =>
+                        let
+                           val new_args = new_args_fn tr_args conArgs
+                        in
+                           Transfer.Call {args = new_args,
+                                          entry = FunctionEntry.name new_entry,
+                                          func = func,
+                                          return = return}
+                        end
                   in
                      Block.T {args = args,
                               label = label,
